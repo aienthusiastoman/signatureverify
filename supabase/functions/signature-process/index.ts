@@ -219,25 +219,18 @@ async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer, scaleFile
   return Math.max(0, Math.min(100, score));
 }
 
-async function pdfBase64ToImageBuffer(base64: string): Promise<ArrayBuffer> {
-  const pdfBytes = Buffer.from(base64, "base64");
-  const pdfDoc = await PDFDocument.load(pdfBytes);
-  const pages = pdfDoc.getPages();
-  if (pages.length === 0) throw new Error("PDF has no pages");
-
-  const { width, height } = pages[0].getSize();
-  const scale = 2.0;
-  const W = Math.round(width * scale);
-  const H = Math.round(height * scale);
-
-  const singlePageDoc = await PDFDocument.create();
-  const [copiedPage] = await singlePageDoc.copyPages(pdfDoc, [0]);
-  singlePageDoc.addPage(copiedPage);
-  const singlePageBytes = await singlePageDoc.save();
-
-  const img = new Jimp(W, H, 0xFFFFFFFF);
-  img.resize(W, H);
-  return await img.getBufferAsync(Jimp.MIME_PNG);
+async function cropImageToMask(
+  buf: ArrayBuffer,
+  mask: { x: number; y: number; width: number; height: number }
+): Promise<ArrayBuffer> {
+  const img = await Jimp.read(Buffer.from(buf));
+  const x = Math.max(0, Math.round(mask.x));
+  const y = Math.max(0, Math.round(mask.y));
+  const w = Math.min(img.getWidth() - x, Math.max(1, Math.round(mask.width)));
+  const h = Math.min(img.getHeight() - y, Math.max(1, Math.round(mask.height)));
+  img.crop(x, y, w, h);
+  const outBuf = await img.getBufferAsync(Jimp.MIME_PNG);
+  return outBuf.buffer as ArrayBuffer;
 }
 
 async function generatePDF(
@@ -431,6 +424,13 @@ Deno.serve(async (req: Request) => {
           mask1Raw = JSON.stringify(tpl.mask1);
           mask2Raw = JSON.stringify(tpl.mask2);
         }
+      }
+
+      if (mask1Raw && mask2Raw) {
+        const m1 = JSON.parse(mask1Raw);
+        const m2 = JSON.parse(mask2Raw);
+        buf1 = await cropImageToMask(buf1, m1);
+        buf2 = await cropImageToMask(buf2, m2);
       }
     } else {
       const formData = await req.formData();
