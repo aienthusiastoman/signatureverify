@@ -218,7 +218,6 @@ export default function ApiTestPage() {
     const { data } = await supabase
       .from('templates')
       .select('id, name, mask1, mask2, created_at')
-      .eq('user_id', user.id)
       .order('created_at', { ascending: false });
     setTemplates((data as SavedTemplate[]) ?? []);
   }, [user]);

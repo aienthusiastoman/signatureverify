@@ -60,4 +60,5 @@ export type AppView =
   | 'api-docs'
   | 'api-test'
   | 'customers'
-  | 'theming';
+  | 'theming'
+  | 'templates';

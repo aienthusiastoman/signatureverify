@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Users, Plus, UserCheck, UserX, Trash2, Loader2, AlertCircle, CheckCircle, X, ShieldCheck, User } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 interface ManagedUser {
   id: string;
@@ -13,8 +13,15 @@ interface ManagedUser {
 
 const ADMIN_FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-users`;
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return {
+    'Authorization': `Bearer ${session?.access_token ?? ''}`,
+    'Content-Type': 'application/json',
+  };
+}
+
 export default function CustomerManagementPage() {
-  const { session } = useAuth();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
@@ -27,11 +34,6 @@ export default function CustomerManagementPage() {
   const [creating, setCreating] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  const authHeaders = {
-    'Authorization': `Bearer ${session?.access_token}`,
-    'Content-Type': 'application/json',
-  };
-
   const notify = (msg: string, isError = false) => {
     if (isError) { setError(msg); setSuccess(''); }
     else { setSuccess(msg); setError(''); }
@@ -39,10 +41,10 @@ export default function CustomerManagementPage() {
   };
 
   const fetchUsers = useCallback(async () => {
-    if (!session) return;
     setLoading(true);
     try {
-      const res = await fetch(ADMIN_FN, { headers: authHeaders });
+      const headers = await getAuthHeaders();
+      const res = await fetch(ADMIN_FN, { headers });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load users');
       setUsers(data.users ?? []);
@@ -51,7 +53,7 @@ export default function CustomerManagementPage() {
     } finally {
       setLoading(false);
     }
-  }, [session]);
+  }, []);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
@@ -63,9 +65,10 @@ export default function CustomerManagementPage() {
   const toggleActive = async (u: ManagedUser) => {
     setActionId(u.id);
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch(ADMIN_FN, {
         method: 'POST',
-        headers: authHeaders,
+        headers,
         body: JSON.stringify({ action: 'update', userId: u.id, active: !isActive(u) }),
       });
       const data = await res.json();
@@ -83,9 +86,10 @@ export default function CustomerManagementPage() {
     setActionId(id);
     setDeleteConfirm(null);
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch(ADMIN_FN, {
         method: 'POST',
-        headers: authHeaders,
+        headers,
         body: JSON.stringify({ action: 'delete', userId: id }),
       });
       const data = await res.json();
@@ -103,9 +107,10 @@ export default function CustomerManagementPage() {
     if (!newEmail.trim() || !newPassword.trim()) return;
     setCreating(true);
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch(ADMIN_FN, {
         method: 'POST',
-        headers: authHeaders,
+        headers,
         body: JSON.stringify({ action: 'create', email: newEmail.trim(), password: newPassword, role: newRole }),
       });
       const data = await res.json();

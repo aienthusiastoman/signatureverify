@@ -15,6 +15,7 @@ import ApiDocPage from './pages/ApiDocPage';
 import ApiTestPage from './pages/ApiTestPage';
 import CustomerManagementPage from './pages/CustomerManagementPage';
 import ThemingPage from './pages/ThemingPage';
+import TemplatesPage from './pages/TemplatesPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { useSignatureProcess } from './hooks/useSignatureProcess';
@@ -311,6 +312,7 @@ function AuthenticatedApp() {
     'api-test': 'API Testing',
     'customers': 'Customers',
     'theming': 'Theming',
+    'templates': 'Templates',
   };
 
   return (
@@ -339,6 +341,7 @@ function AuthenticatedApp() {
           {appView === 'api-test' && <ApiTestPage />}
           {appView === 'customers' && <CustomerManagementPage />}
           {appView === 'theming' && <ThemingPage />}
+          {appView === 'templates' && <TemplatesPage />}
         </main>
       </div>
     </div>

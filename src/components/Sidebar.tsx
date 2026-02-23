@@ -1,4 +1,4 @@
-import { FileSignature, User, Key, BookOpen, FlaskConical, Users, Palette, LogOut, ChevronRight } from 'lucide-react';
+import { FileSignature, User, Key, BookOpen, FlaskConical, Users, Palette, LogOut, ChevronRight, LayoutTemplate } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import type { AppView } from '../types';
@@ -23,6 +23,7 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
       { id: 'api-keys', label: 'API Keys', icon: Key },
       { id: 'api-docs', label: 'Documentation', icon: BookOpen },
       { id: 'api-test', label: 'API Testing', icon: FlaskConical },
+      { id: 'templates', label: 'Templates', icon: LayoutTemplate },
     ],
   },
   {
