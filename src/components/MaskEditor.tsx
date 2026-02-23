@@ -1,0 +1,340 @@
+import { useRef, useState, useEffect, useCallback } from 'react';
+import { Wand2, RotateCcw, Move, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import type { MaskRect, UploadedFile } from '../types';
+import { autoDetectSignature } from '../lib/signatureDetect';
+import { renderPdfPageToCanvas, renderPdfThumbnail } from '../lib/imageUtils';
+
+interface Props {
+  file: UploadedFile;
+  mask: MaskRect | null;
+  onMaskChange: (mask: MaskRect) => void;
+  canvasRef: React.MutableRefObject<HTMLCanvasElement | null>;
+}
+
+export default function MaskEditor({ file, mask, onMaskChange, canvasRef }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
+  const thumbStripRef = useRef<HTMLDivElement>(null);
+
+  const [drawing, setDrawing] = useState(false);
+  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [displaySize, setDisplaySize] = useState({ w: 0, h: 0 });
+  const [displayDataUrl, setDisplayDataUrl] = useState('');
+  const [pageCount, setPageCount] = useState(1);
+  const [selectedPage, setSelectedPage] = useState(mask?.page ?? 1);
+  const [thumbnails, setThumbnails] = useState<Record<number, string>>({});
+  const [thumbsLoading, setThumbsLoading] = useState(false);
+
+  const isPdf = file.type === 'pdf';
+
+  useEffect(() => {
+    const count = file.pageCount ?? 1;
+    setPageCount(count);
+    setSelectedPage(mask?.page ?? 1);
+
+    if (!isPdf || count <= 1) return;
+
+    setThumbsLoading(true);
+    const promises = Array.from({ length: count }, (_, i) =>
+      renderPdfThumbnail(file.file, i + 1).then(url => ({ page: i + 1, url }))
+    );
+    Promise.all(promises)
+      .then(results => {
+        const map: Record<number, string> = {};
+        results.forEach(r => { map[r.page] = r.url; });
+        setThumbnails(map);
+      })
+      .finally(() => setThumbsLoading(false));
+  }, [file]);
+
+  const renderPage = useCallback(async (pageNum: number) => {
+    setLoaded(false);
+    setLoadError(null);
+    setDisplayDataUrl('');
+
+    try {
+      let srcCanvas: HTMLCanvasElement;
+
+      if (isPdf) {
+        srcCanvas = await renderPdfPageToCanvas(file.file, pageNum);
+      } else {
+        srcCanvas = document.createElement('canvas');
+        const img = new Image();
+        await new Promise<void>((res, rej) => {
+          img.onload = () => {
+            srcCanvas.width = img.naturalWidth;
+            srcCanvas.height = img.naturalHeight;
+            srcCanvas.getContext('2d')!.drawImage(img, 0, 0);
+            res();
+          };
+          img.onerror = () => rej(new Error('Image failed to load'));
+          img.src = file.previewUrl;
+        });
+      }
+
+      const offscreen = document.createElement('canvas');
+      offscreen.width = srcCanvas.width;
+      offscreen.height = srcCanvas.height;
+      offscreen.getContext('2d')!.drawImage(srcCanvas, 0, 0);
+      canvasRef.current = offscreen;
+
+      const containerWidth = containerRef.current?.clientWidth || 640;
+      const scale = Math.min(1, containerWidth / srcCanvas.width, 480 / srcCanvas.height);
+      setDisplaySize({ w: Math.round(srcCanvas.width * scale), h: Math.round(srcCanvas.height * scale) });
+      setDisplayDataUrl(offscreen.toDataURL('image/png'));
+      setLoaded(true);
+    } catch (e) {
+      setLoadError('Failed to render document.');
+    }
+  }, [file, isPdf, canvasRef]);
+
+  useEffect(() => {
+    renderPage(selectedPage);
+  }, [selectedPage, renderPage]);
+
+  const handlePageSelect = (page: number) => {
+    if (page === selectedPage) return;
+    setSelectedPage(page);
+    onMaskChange({ x: 0, y: 0, width: 0, height: 0, page });
+    thumbStripRef.current
+      ?.querySelector(`[data-page="${page}"]`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  };
+
+  const getRelPos = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = overlayRef.current!.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(displaySize.w, e.clientX - rect.left)),
+      y: Math.max(0, Math.min(displaySize.h, e.clientY - rect.top)),
+    };
+  };
+
+  const scaleToNatural = (r: MaskRect): MaskRect => {
+    const c = canvasRef.current;
+    if (!c || !displaySize.w) return r;
+    return {
+      x: Math.round(r.x * (c.width / displaySize.w)),
+      y: Math.round(r.y * (c.height / displaySize.h)),
+      width: Math.round(r.width * (c.width / displaySize.w)),
+      height: Math.round(r.height * (c.height / displaySize.h)),
+      page: selectedPage,
+    };
+  };
+
+  const scaleToDisplay = (r: MaskRect): MaskRect => {
+    const c = canvasRef.current;
+    if (!c || !displaySize.w) return r;
+    return {
+      x: Math.round(r.x * (displaySize.w / c.width)),
+      y: Math.round(r.y * (displaySize.h / c.height)),
+      width: Math.round(r.width * (displaySize.w / c.width)),
+      height: Math.round(r.height * (displaySize.h / c.height)),
+    };
+  };
+
+  const drawOverlay = useCallback((displayMask: MaskRect | null) => {
+    const overlay = overlayRef.current;
+    if (!overlay || !displaySize.w) return;
+    overlay.width = displaySize.w;
+    overlay.height = displaySize.h;
+    const ctx = overlay.getContext('2d')!;
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    if (!displayMask || displayMask.width < 2 || displayMask.height < 2) return;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.42)';
+    ctx.fillRect(0, 0, overlay.width, overlay.height);
+    ctx.clearRect(displayMask.x, displayMask.y, displayMask.width, displayMask.height);
+
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 3]);
+    ctx.strokeRect(displayMask.x, displayMask.y, displayMask.width, displayMask.height);
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#3b82f6';
+    [[displayMask.x, displayMask.y],
+     [displayMask.x + displayMask.width, displayMask.y],
+     [displayMask.x, displayMask.y + displayMask.height],
+     [displayMask.x + displayMask.width, displayMask.y + displayMask.height],
+    ].forEach(([hx, hy]) => {
+      ctx.beginPath(); ctx.arc(hx, hy, 5, 0, Math.PI * 2); ctx.fill();
+    });
+  }, [displaySize]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    const maskOnThisPage = mask && (mask.page === selectedPage || !isPdf);
+    if (!maskOnThisPage || !mask || mask.width < 2) { drawOverlay(null); return; }
+    drawOverlay(scaleToDisplay(mask));
+  }, [mask, loaded, selectedPage, drawOverlay]);
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    setStartPos(getRelPos(e));
+    setDrawing(true);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!drawing) return;
+    const pos = getRelPos(e);
+    drawOverlay({ x: Math.min(pos.x, startPos.x), y: Math.min(pos.y, startPos.y), width: Math.abs(pos.x - startPos.x), height: Math.abs(pos.y - startPos.y) });
+  };
+
+  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!drawing) return;
+    setDrawing(false);
+    const pos = getRelPos(e);
+    const displayMask: MaskRect = { x: Math.min(pos.x, startPos.x), y: Math.min(pos.y, startPos.y), width: Math.abs(pos.x - startPos.x), height: Math.abs(pos.y - startPos.y) };
+    if (displayMask.width > 5 && displayMask.height > 5) onMaskChange(scaleToNatural(displayMask));
+  };
+
+  const handleAutoDetect = () => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const detected = autoDetectSignature(c);
+    onMaskChange({ ...detected, page: selectedPage });
+  };
+
+  const handleReset = () => {
+    onMaskChange({ x: 0, y: 0, width: 0, height: 0, page: selectedPage });
+    drawOverlay(null);
+  };
+
+  const maskOnThisPage = mask && (mask.page === selectedPage || !isPdf);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={handleAutoDetect} disabled={!loaded}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium rounded-lg transition-colors">
+          <Wand2 size={13} /> Auto-Detect
+        </button>
+        <button onClick={handleReset} disabled={!loaded}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 text-xs font-medium rounded-lg transition-colors">
+          <RotateCcw size={13} /> Reset
+        </button>
+        <div className="flex items-center gap-1.5 text-slate-400 text-xs ml-auto">
+          <Move size={12} /> <span>Draw to select region</span>
+        </div>
+      </div>
+
+      {isPdf && pageCount > 1 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-slate-400 text-xs font-medium">
+              Select page containing the signature
+            </p>
+            <div className="flex items-center gap-1">
+              <button onClick={() => handlePageSelect(Math.max(1, selectedPage - 1))} disabled={selectedPage <= 1}
+                className="p-1 rounded hover:bg-slate-700 disabled:opacity-30 text-slate-400 transition-colors">
+                <ChevronLeft size={14} />
+              </button>
+              <span className="text-slate-300 text-xs px-1">
+                {selectedPage} / {pageCount}
+              </span>
+              <button onClick={() => handlePageSelect(Math.min(pageCount, selectedPage + 1))} disabled={selectedPage >= pageCount}
+                className="p-1 rounded hover:bg-slate-700 disabled:opacity-30 text-slate-400 transition-colors">
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+
+          <div
+            ref={thumbStripRef}
+            className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin"
+            style={{ scrollbarWidth: 'thin' }}
+          >
+            {Array.from({ length: pageCount }, (_, i) => i + 1).map(pageNum => {
+              const isSelected = pageNum === selectedPage;
+              const hasMask = mask?.page === pageNum && (mask?.width ?? 0) > 2;
+              return (
+                <button
+                  key={pageNum}
+                  data-page={pageNum}
+                  onClick={() => handlePageSelect(pageNum)}
+                  className={`shrink-0 relative rounded-lg overflow-hidden border-2 transition-all ${
+                    isSelected ? 'border-blue-500 shadow-lg shadow-blue-500/30' : 'border-slate-600 hover:border-slate-400'
+                  }`}
+                  style={{ width: 80 }}
+                >
+                  {thumbnails[pageNum] ? (
+                    <img src={thumbnails[pageNum]} alt={`Page ${pageNum}`} className="w-full block bg-white" />
+                  ) : (
+                    <div className="w-full h-24 bg-slate-800 flex items-center justify-center">
+                      <FileText size={16} className="text-slate-500" />
+                    </div>
+                  )}
+                  <div className={`absolute bottom-0 left-0 right-0 text-center py-0.5 text-xs font-medium ${
+                    isSelected ? 'bg-blue-600 text-white' : 'bg-slate-900/80 text-slate-300'
+                  }`}>
+                    {pageNum}
+                  </div>
+                  {hasMask && (
+                    <div className="absolute top-1 right-1 w-2 h-2 bg-emerald-400 rounded-full shadow-sm" />
+                  )}
+                </button>
+              );
+            })}
+            {thumbsLoading && !Object.keys(thumbnails).length && (
+              <div className="shrink-0 w-20 h-28 bg-slate-800 rounded-lg border border-slate-600 flex items-center justify-center">
+                <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div ref={containerRef} className="relative bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
+        {!loaded && !loadError && (
+          <div className="flex items-center justify-center h-52">
+            <div className="text-center">
+              <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <p className="text-slate-400 text-xs">
+                {isPdf ? `Rendering page ${selectedPage}...` : 'Loading document...'}
+              </p>
+            </div>
+          </div>
+        )}
+        {loadError && (
+          <div className="flex items-center justify-center h-52">
+            <p className="text-red-400 text-xs">{loadError}</p>
+          </div>
+        )}
+        {loaded && displayDataUrl && (
+          <div className="relative" style={{ width: displaySize.w, height: displaySize.h, maxWidth: '100%' }}>
+            <img src={displayDataUrl} alt={`Page ${selectedPage}`} style={{ width: displaySize.w, height: displaySize.h, display: 'block' }} />
+            <canvas
+              ref={overlayRef}
+              width={displaySize.w}
+              height={displaySize.h}
+              className="absolute inset-0 cursor-crosshair"
+              style={{ width: displaySize.w, height: displaySize.h }}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+            />
+          </div>
+        )}
+      </div>
+
+      {maskOnThisPage && mask && mask.width > 0 && (
+        <div className="grid grid-cols-4 gap-2">
+          {[{ label: 'X', value: mask.x }, { label: 'Y', value: mask.y }, { label: 'W', value: mask.width }, { label: 'H', value: mask.height }].map(({ label, value }) => (
+            <div key={label} className="bg-slate-800 rounded-lg p-2 text-center border border-slate-700">
+              <p className="text-slate-400 text-xs">{label}</p>
+              <p className="text-white text-sm font-mono font-semibold">{value}px</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isPdf && !maskOnThisPage && mask && mask.width > 0 && (
+        <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+          <span>Region defined on page {mask.page}. Switch to that page to see it, or draw a new one on this page.</span>
+        </div>
+      )}
+    </div>
+  );
+}
