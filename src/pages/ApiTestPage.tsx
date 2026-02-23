@@ -244,11 +244,12 @@ export default function ApiTestPage() {
     });
 
   const handleRun = async () => {
-    if (!file1 || !file2 || !session) return;
+    if (!file1 || !file2) return;
     setLoading(true);
     setResponse(null);
 
     try {
+      const { data: { session: freshSession } } = await supabase.auth.getSession();
       const [b64_1, b64_2] = await Promise.all([toBase64(file1), toBase64(file2)]);
 
       const payload: Record<string, unknown> = {
@@ -267,7 +268,7 @@ export default function ApiTestPage() {
       const res = await fetch(ENDPOINT, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${freshSession?.access_token ?? ''}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
