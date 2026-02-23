@@ -171,17 +171,21 @@ async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer, scaleFile
   const sig1 = isolateSignature(raw1);
   const sig2 = isolateSignature(raw2);
 
-  if (scaleFile2 !== 1.0) {
-    const sw = Math.round(sig2.getWidth() * scaleFile2);
-    const sh = Math.round(sig2.getHeight() * scaleFile2);
-    sig2.resize(Math.max(1, sw), Math.max(1, sh));
-  }
-
-  const W = 200;
-  const H = 100;
+  const W = 300;
+  const H = 150;
 
   sig1.resize(W, H);
   sig2.resize(W, H);
+
+  if (scaleFile2 !== 1.0) {
+    const sw = Math.round(W * scaleFile2);
+    const sh = Math.round(H * scaleFile2);
+    const scaled = sig2.clone().resize(Math.max(1, sw), Math.max(1, sh));
+    const offsetX = Math.max(0, Math.floor((sw - W) / 2));
+    const offsetY = Math.max(0, Math.floor((sh - H) / 2));
+    const cropped = sw > W || sh > H ? scaled.crop(offsetX, offsetY, W, H) : scaled.resize(W, H);
+    sig2.bitmap = cropped.bitmap;
+  }
 
   const pixels1: number[] = [];
   const pixels2: number[] = [];
@@ -208,7 +212,11 @@ async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer, scaleFile
 
   if (den1 === 0 || den2 === 0) return 50;
   const ncc = num / Math.sqrt(den1 * den2);
-  return Math.max(0, Math.min(100, ((ncc + 1) / 2) * 100));
+
+  const nccClamped = Math.max(-1, Math.min(1, ncc));
+  const raw = ((nccClamped + 1) / 2) * 100;
+  const score = Math.pow(raw / 100, 0.5) * 100;
+  return Math.max(0, Math.min(100, score));
 }
 
 async function pdfBase64ToImageBuffer(base64: string): Promise<ArrayBuffer> {

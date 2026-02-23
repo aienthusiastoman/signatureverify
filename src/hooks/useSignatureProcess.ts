@@ -16,7 +16,7 @@ export function useSignatureProcess() {
     file2: File,
     region1: SignatureRegion,
     region2: SignatureRegion,
-    scaleFile2: number = 1.5
+    scaleFile2: number = 1.0
   ) => {
     setLoading(true);
     setError(null);
