@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FlaskConical, Play, Copy, CheckCircle, AlertCircle, Loader2, Upload, X, ChevronDown, LayoutTemplate } from 'lucide-react';
+import { FlaskConical, Play, Copy, CheckCircle, Loader2, Upload, X, ChevronDown, LayoutTemplate } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { renderPdfPageToCanvas, canvasToBlob } from '../lib/imageUtils';
 import type { SavedTemplate, MaskRect } from '../types';
 
 type Language = 'curl' | 'javascript' | 'python' | 'php' | 'go';
@@ -232,8 +233,21 @@ export default function ApiTestPage() {
   const selectedKey = apiKeys.find(k => k.id === selectedKeyId);
   const keyLabel = selectedKey ? `${selectedKey.key_prefix}••••••••••••` : 'svk_live_YOUR_KEY';
 
-  const toBase64 = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
+  const toBase64 = async (file: File): Promise<string> => {
+    if (file.type === 'application/pdf') {
+      const canvas = await renderPdfPageToCanvas(file, 1);
+      const blob = await canvasToBlob(canvas);
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.includes(',') ? result.split(',')[1] : result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
@@ -242,6 +256,7 @@ export default function ApiTestPage() {
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
+  };
 
   const handleRun = async () => {
     if (!file1 || !file2) return;
