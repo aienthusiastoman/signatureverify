@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Key, Plus, Trash2, Copy, CheckCircle, AlertCircle, ArrowLeft, Eye, EyeOff, BookOpen, Code, ChevronDown, ChevronUp } from 'lucide-react';
+import { Key, Plus, Trash2, Copy, CheckCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -10,10 +10,6 @@ interface ApiKey {
   is_active: boolean;
   last_used_at: string | null;
   created_at: string;
-}
-
-interface Props {
-  onBack: () => void;
 }
 
 function generateApiKey(): string {
@@ -29,70 +25,7 @@ async function hashKey(key: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-const DOC_SECTIONS = [
-  {
-    title: 'Authentication',
-    content: `All API requests must include your API key in the Authorization header:
-
-Authorization: Bearer svk_live_your_key_here`,
-  },
-  {
-    title: 'Compare Signatures (files)',
-    content: `POST /functions/v1/signature-process
-
-Send a multipart/form-data request:
-
-{
-  "signature1": <image file>,
-  "signature2": <image file>,
-  "file1_name": "document1.pdf",
-  "file2_name": "document2.pdf",
-  "scale_file2": 1.5
-}`,
-  },
-  {
-    title: 'Compare Signatures (base64 PDF)',
-    content: `POST /functions/v1/signature-process
-
-Send JSON with base64-encoded files:
-
-{
-  "file1_base64": "JVBERi0x...",
-  "file2_base64": "JVBERi0x...",
-  "file1_name": "doc1.pdf",
-  "file2_name": "doc2.pdf",
-  "scale_file2": 1.5
-}`,
-  },
-  {
-    title: 'Using Saved Templates',
-    content: `Include a template_id to automatically apply saved mask regions.
-Retrieve template IDs from your templates table via the Supabase client.
-
-{
-  "file1_base64": "JVBERi0x...",
-  "file2_base64": "JVBERi0x...",
-  "template_id": "uuid-of-template",
-  "scale_file2": 1.5
-}
-
-The template masks will override any manual mask coordinates.`,
-  },
-  {
-    title: 'Response Format',
-    content: `{
-  "jobId": "abc-123-...",
-  "confidenceScore": 94.7,
-  "status": "completed",
-  "resultUrl": "https://..."
-}
-
-confidenceScore ranges from 0 (no match) to 100 (identical).
-Thresholds: 0-49 Mismatch | 50-74 Moderate | 75-100 High Match`,
-  },
-];
-
-export default function ApiKeysPage({ onBack }: Props) {
+export default function ApiKeysPage() {
   const { user } = useAuth();
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +35,6 @@ export default function ApiKeysPage({ onBack }: Props) {
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
-  const [openDoc, setOpenDoc] = useState<number | null>(0);
 
   const fetchKeys = useCallback(async () => {
     if (!user) return;
@@ -155,158 +87,117 @@ export default function ApiKeysPage({ onBack }: Props) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <div className="max-w-3xl mx-auto px-6 py-10 space-y-8">
+    <div className="space-y-6 max-w-3xl">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-teal-500/15 border border-teal-500/30 rounded-xl flex items-center justify-center">
+          <Key size={18} className="text-teal-400" />
+        </div>
         <div>
-          <button
-            onClick={onBack}
-            className="flex items-center gap-1.5 text-slate-400 hover:text-white text-sm font-medium mb-6 transition-colors"
-          >
-            <ArrowLeft size={16} /> Back to app
-          </button>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-teal-500/15 border border-teal-500/30 rounded-xl flex items-center justify-center">
-              <Key size={18} className="text-teal-400" />
-            </div>
-            <div>
-              <h1 className="text-white text-2xl font-black">API Keys</h1>
-              <p className="text-slate-400 text-sm font-light">Manage access keys for the REST API</p>
-            </div>
+          <h1 className="text-white text-xl font-black">API Keys</h1>
+          <p className="text-slate-400 text-sm font-light">Manage access keys for the REST API</p>
+        </div>
+      </div>
+
+      {newlyCreatedKey && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-5 space-y-3">
+          <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
+            <CheckCircle size={16} />
+            API Key Created — Copy it now, it won't be shown again
           </div>
+          <div className="flex items-center gap-3 bg-slate-900/60 border border-slate-700 rounded-xl px-4 py-3">
+            <code className="flex-1 font-mono text-sm text-slate-200 break-all">{newlyCreatedKey}</code>
+            <button
+              onClick={copyKey}
+              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                copied ? 'bg-emerald-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+              }`}
+            >
+              {copied ? <><CheckCircle size={13} /> Copied</> : <><Copy size={13} /> Copy</>}
+            </button>
+          </div>
+          <button
+            onClick={() => setNewlyCreatedKey(null)}
+            className="text-slate-500 hover:text-slate-300 text-xs transition-colors"
+          >
+            I've saved my key, dismiss
+          </button>
+        </div>
+      )}
+
+      <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700/40">
+          <h2 className="font-bold text-white text-sm">Your Keys</h2>
+          <button
+            onClick={() => setShowCreateForm(p => !p)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-teal-500 hover:bg-teal-400 text-white text-sm font-semibold rounded-xl transition-colors"
+          >
+            <Plus size={15} /> New Key
+          </button>
         </div>
 
-        {newlyCreatedKey && (
-          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-5 space-y-3">
-            <div className="flex items-center gap-2 text-emerald-400 font-semibold">
-              <CheckCircle size={16} />
-              API Key Created — Copy it now, it won't be shown again
-            </div>
-            <div className="flex items-center gap-3 bg-slate-900/60 border border-slate-700 rounded-xl px-4 py-3">
-              <code className="flex-1 font-mono text-sm text-slate-200 break-all">{newlyCreatedKey}</code>
+        {showCreateForm && (
+          <div className="px-5 py-4 border-b border-slate-700/40 bg-slate-800/40 space-y-3">
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={newKeyName}
+                onChange={e => setNewKeyName(e.target.value)}
+                placeholder="Key name (e.g. Production)"
+                className="flex-1 bg-slate-800 border border-slate-600 focus:border-teal-500 text-white rounded-xl px-4 py-2.5 text-sm outline-none transition-colors placeholder:text-slate-500"
+                onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                autoFocus
+              />
               <button
-                onClick={copyKey}
-                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${copied ? 'bg-emerald-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'}`}
+                onClick={handleCreate}
+                disabled={creating || !newKeyName.trim()}
+                className="px-4 py-2.5 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors"
               >
-                {copied ? <><CheckCircle size={13} /> Copied</> : <><Copy size={13} /> Copy</>}
+                {creating ? 'Creating...' : 'Create'}
+              </button>
+              <button
+                onClick={() => { setShowCreateForm(false); setError(''); }}
+                className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm rounded-xl transition-colors"
+              >
+                Cancel
               </button>
             </div>
-            <button
-              onClick={() => setNewlyCreatedKey(null)}
-              className="text-slate-500 hover:text-slate-300 text-xs transition-colors"
-            >
-              I've saved my key, dismiss
-            </button>
+            {error && <p className="text-red-400 text-xs flex items-center gap-1.5"><AlertCircle size={13} />{error}</p>}
           </div>
         )}
 
-        <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700/40">
-            <h2 className="font-bold text-white">Your Keys</h2>
-            <button
-              onClick={() => setShowCreateForm(p => !p)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-teal-500 hover:bg-teal-400 text-white text-sm font-semibold rounded-xl transition-colors"
-            >
-              <Plus size={15} /> New Key
-            </button>
+        {loading && <div className="py-12 text-center text-slate-500 text-sm">Loading...</div>}
+
+        {!loading && keys.length === 0 && (
+          <div className="py-12 text-center space-y-2">
+            <Key size={28} className="text-slate-600 mx-auto" />
+            <p className="text-slate-400 font-medium">No API keys yet</p>
+            <p className="text-slate-500 text-sm font-light">Create your first key to start using the API</p>
           </div>
+        )}
 
-          {showCreateForm && (
-            <div className="px-5 py-4 border-b border-slate-700/40 bg-slate-800/40 space-y-3">
-              <div className="flex gap-3">
-                <input
-                  type="text"
-                  value={newKeyName}
-                  onChange={e => setNewKeyName(e.target.value)}
-                  placeholder="Key name (e.g. Production)"
-                  className="flex-1 bg-slate-800 border border-slate-600 focus:border-teal-500 text-white rounded-xl px-4 py-2.5 text-sm outline-none transition-colors placeholder:text-slate-500"
-                  onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                  autoFocus
-                />
-                <button
-                  onClick={handleCreate}
-                  disabled={creating || !newKeyName.trim()}
-                  className="px-4 py-2.5 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors"
-                >
-                  {creating ? 'Creating...' : 'Create'}
-                </button>
-                <button
-                  onClick={() => { setShowCreateForm(false); setError(''); }}
-                  className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm rounded-xl transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-              {error && <p className="text-red-400 text-xs flex items-center gap-1.5"><AlertCircle size={13} />{error}</p>}
+        {!loading && keys.map(k => (
+          <div key={k.id} className="flex items-center justify-between px-5 py-4 border-b border-slate-700/30 last:border-0 hover:bg-slate-800/30 transition-colors">
+            <div className="space-y-0.5 min-w-0">
+              <p className="text-white font-semibold text-sm">{k.name}</p>
+              <p className="text-slate-500 font-mono text-xs">{k.key_prefix}•••••••••••••••</p>
+              <p className="text-slate-600 text-xs">
+                Created {new Date(k.created_at).toLocaleDateString()}
+                {k.last_used_at && ` · Last used ${new Date(k.last_used_at).toLocaleDateString()}`}
+              </p>
             </div>
-          )}
-
-          {loading && (
-            <div className="py-12 text-center text-slate-500 text-sm">Loading...</div>
-          )}
-
-          {!loading && keys.length === 0 && (
-            <div className="py-12 text-center space-y-2">
-              <Key size={28} className="text-slate-600 mx-auto" />
-              <p className="text-slate-400 font-medium">No API keys yet</p>
-              <p className="text-slate-500 text-sm font-light">Create your first key to start using the API</p>
+            <div className="flex items-center gap-3 shrink-0 ml-4">
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${k.is_active ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
+                {k.is_active ? 'Active' : 'Inactive'}
+              </span>
+              <button
+                onClick={() => handleDelete(k.id)}
+                className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-colors"
+              >
+                <Trash2 size={15} />
+              </button>
             </div>
-          )}
-
-          {!loading && keys.map(k => (
-            <div key={k.id} className="flex items-center justify-between px-5 py-4 border-b border-slate-700/30 last:border-0 hover:bg-slate-800/30 transition-colors">
-              <div className="space-y-0.5 min-w-0">
-                <p className="text-white font-semibold">{k.name}</p>
-                <p className="text-slate-500 font-mono text-xs">{k.key_prefix}•••••••••••••••</p>
-                <p className="text-slate-600 text-xs">
-                  Created {new Date(k.created_at).toLocaleDateString()}
-                  {k.last_used_at && ` · Last used ${new Date(k.last_used_at).toLocaleDateString()}`}
-                </p>
-              </div>
-              <div className="flex items-center gap-3 shrink-0 ml-4">
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${k.is_active ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
-                  {k.is_active ? 'Active' : 'Inactive'}
-                </span>
-                <button
-                  onClick={() => handleDelete(k.id)}
-                  className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-colors"
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
-          <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-700/40">
-            <BookOpen size={17} className="text-teal-400" />
-            <h2 className="font-bold text-white">API Documentation</h2>
           </div>
-
-          <div className="divide-y divide-slate-700/30">
-            {DOC_SECTIONS.map(({ title, content }, i) => (
-              <div key={i}>
-                <button
-                  onClick={() => setOpenDoc(openDoc === i ? null : i)}
-                  className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-800/30 transition-colors text-left"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Code size={15} className="text-teal-400 shrink-0" />
-                    <span className="text-white font-semibold text-sm">{title}</span>
-                  </div>
-                  {openDoc === i ? <ChevronUp size={15} className="text-slate-400 shrink-0" /> : <ChevronDown size={15} className="text-slate-400 shrink-0" />}
-                </button>
-                {openDoc === i && (
-                  <div className="px-5 pb-5">
-                    <pre className="bg-slate-950 border border-slate-700/50 rounded-xl p-4 text-slate-300 text-xs font-mono leading-relaxed whitespace-pre-wrap overflow-x-auto">
-                      {content}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+        ))}
       </div>
     </div>
   );

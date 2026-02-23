@@ -52,3 +52,12 @@ export interface ProcessResponse {
   status: string;
   resultUrl: string;
 }
+
+export type AppView =
+  | 'app'
+  | 'profile'
+  | 'api-keys'
+  | 'api-docs'
+  | 'api-test'
+  | 'customers'
+  | 'theming';

@@ -233,8 +233,7 @@ export default function LandingPage({ onGetStarted, onLogin }: Props) {
   "api_key": "svk_live_...",
   "file1_base64": "JVBERi0x...",
   "file2_base64": "JVBERi0x...",
-  "template_id": "tpl_abc123",
-  "scale_file2": 1.5
+  "template_id": "tpl_abc123"
 }`}</pre>
               <div className="mt-4 pt-4 border-t border-slate-700">
                 <div className="text-slate-500 text-xs mb-2">Response</div>
