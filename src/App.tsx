@@ -19,7 +19,7 @@ import TemplatesPage from './pages/TemplatesPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { useSignatureProcess } from './hooks/useSignatureProcess';
-import { extractRegion, renderPdfPageToCanvas } from './lib/imageUtils';
+import { extractRegion, renderPdfPageToCanvas, findPageByAnchorText } from './lib/imageUtils';
 import type { UploadedFile, MaskRect, SignatureRegion, AppStep, AppView } from './types';
 
 async function renderPageCanvas(file: UploadedFile, page: number): Promise<HTMLCanvasElement> {
@@ -50,6 +50,7 @@ function CompareToolContent() {
   const [region2, setRegion2] = useState<SignatureRegion | null>(null);
   const [activeDoc, setActiveDoc] = useState<1 | 2>(1);
   const [extracting, setExtracting] = useState(false);
+  const [anchorWarning, setAnchorWarning] = useState<string | null>(null);
 
   const canvas1Ref = useRef<HTMLCanvasElement | null>(null);
   const canvas2Ref = useRef<HTMLCanvasElement | null>(null);
@@ -77,17 +78,41 @@ function CompareToolContent() {
   const handleProceedToPreview = async () => {
     if (!file1 || !file2 || !mask1 || !mask2) return;
     setExtracting(true);
+    setAnchorWarning(null);
     try {
-      const page1 = mask1.page ?? 1;
-      const page2 = mask2.page ?? 1;
+      let resolvedMask1 = mask1;
+      let resolvedMask2 = mask2;
+
+      if (mask1.anchorText?.trim() && file1.type === 'pdf') {
+        const found = await findPageByAnchorText(file1.file, mask1.anchorText);
+        if (found !== null) {
+          resolvedMask1 = { ...mask1, page: found };
+          setMask1(resolvedMask1);
+        } else {
+          setAnchorWarning(`Could not find "${mask1.anchorText}" in Document 1. Using page ${mask1.page ?? 1}.`);
+        }
+      }
+
+      if (mask2.anchorText?.trim() && file2.type === 'pdf') {
+        const found = await findPageByAnchorText(file2.file, mask2.anchorText);
+        if (found !== null) {
+          resolvedMask2 = { ...mask2, page: found };
+          setMask2(resolvedMask2);
+        } else {
+          setAnchorWarning(`Could not find "${mask2.anchorText}" in Document 2. Using page ${mask2.page ?? 1}.`);
+        }
+      }
+
+      const page1 = resolvedMask1.page ?? 1;
+      const page2 = resolvedMask2.page ?? 1;
       const c1 = await renderPageCanvas(file1, page1);
       const c2 = await renderPageCanvas(file2, page2);
       canvas1Ref.current = c1;
       canvas2Ref.current = c2;
-      const crop1 = extractRegion(c1, mask1);
-      const crop2 = extractRegion(c2, mask2);
-      setRegion1({ dataUrl: crop1.toDataURL('image/png'), mask: mask1, naturalWidth: c1.width, naturalHeight: c1.height });
-      setRegion2({ dataUrl: crop2.toDataURL('image/png'), mask: mask2, naturalWidth: c2.width, naturalHeight: c2.height });
+      const crop1 = extractRegion(c1, resolvedMask1);
+      const crop2 = extractRegion(c2, resolvedMask2);
+      setRegion1({ dataUrl: crop1.toDataURL('image/png'), mask: resolvedMask1, naturalWidth: c1.width, naturalHeight: c1.height });
+      setRegion2({ dataUrl: crop2.toDataURL('image/png'), mask: resolvedMask2, naturalWidth: c2.width, naturalHeight: c2.height });
       setStep('preview');
     } catch { /* silent */ }
     finally { setExtracting(false); }
@@ -99,14 +124,14 @@ function CompareToolContent() {
     await processSignatures(file1.file, file2.file, region1, region2);
   };
 
-  const handleReset = () => { clearFile1(); clearFile2(); setStep('upload'); };
+  const handleReset = () => { clearFile1(); clearFile2(); setStep('upload'); setAnchorWarning(null); };
 
   const canProceedToMask = !!file1 && !!file2;
   const canProceedToPreview = !!mask1 && mask1.width > 5 && !!mask2 && mask2.width > 5;
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="text-center">
         <h1 className="text-white text-xl font-black">Verify Signatures</h1>
         <p className="text-slate-400 text-sm font-light">Upload and compare two document signatures</p>
       </div>
@@ -116,7 +141,7 @@ function CompareToolContent() {
       </div>
 
       {step === 'upload' && (
-        <div className="max-w-2xl space-y-6">
+        <div className="max-w-2xl mx-auto space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-slate-300 text-sm font-semibold">Document 1 — Reference</label>
@@ -182,10 +207,17 @@ function CompareToolContent() {
             {activeDoc === 2 && file2 && (
               <div className="bg-slate-900/50 border border-slate-700 rounded-2xl p-5">
                 <p className="text-slate-300 text-sm font-semibold mb-3 truncate">{file2.file.name}</p>
-                <MaskEditor file={file2} mask={mask2} onMaskChange={setMask2} canvasRef={canvas2Ref} />
+                <MaskEditor file={file2} mask={mask2} onMaskChange={setMask2} canvasRef={canvas2Ref} showAnchorText />
               </div>
             )}
           </div>
+
+          {anchorWarning && (
+            <div className="max-w-3xl mx-auto flex items-start gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-3">
+              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+              <span>{anchorWarning}</span>
+            </div>
+          )}
 
           <div className="max-w-3xl mx-auto flex gap-3">
             <button
@@ -200,7 +232,7 @@ function CompareToolContent() {
               className="flex-1 flex items-center justify-center gap-2 py-3 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors shadow-lg shadow-teal-500/20"
             >
               {extracting
-                ? <><Loader2 size={16} className="animate-spin" /> Extracting regions...</>
+                ? <><Loader2 size={16} className="animate-spin" /> Scanning pages &amp; extracting regions...</>
                 : <>Preview Signatures <ArrowRight size={18} /></>}
             </button>
           </div>
@@ -208,7 +240,7 @@ function CompareToolContent() {
       )}
 
       {step === 'preview' && (
-        <div className="max-w-2xl space-y-6">
+        <div className="max-w-2xl mx-auto space-y-6">
           <div className="text-center space-y-1">
             <h2 className="text-xl font-black text-white">Preview Signature Regions</h2>
             <p className="text-slate-400 font-light text-sm">Confirm the extracted regions look correct before comparison</p>
@@ -240,7 +272,7 @@ function CompareToolContent() {
       )}
 
       {step === 'results' && (
-        <div className="max-w-xl space-y-6">
+        <div className="max-w-xl mx-auto space-y-6">
           <div className="text-center space-y-1">
             <h2 className="text-xl font-black text-white">Comparison Results</h2>
             <p className="text-slate-400 font-light text-sm">Signature analysis complete</p>

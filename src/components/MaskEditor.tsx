@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Wand2, RotateCcw, Move, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import { Wand2, RotateCcw, Move, ChevronLeft, ChevronRight, FileText, ScanText } from 'lucide-react';
 import type { MaskRect, UploadedFile } from '../types';
 import { autoDetectSignature } from '../lib/signatureDetect';
 import { renderPdfPageToCanvas, renderPdfThumbnail } from '../lib/imageUtils';
@@ -9,9 +9,10 @@ interface Props {
   mask: MaskRect | null;
   onMaskChange: (mask: MaskRect) => void;
   canvasRef: React.MutableRefObject<HTMLCanvasElement | null>;
+  showAnchorText?: boolean;
 }
 
-export default function MaskEditor({ file, mask, onMaskChange, canvasRef }: Props) {
+export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAnchorText = false }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const thumbStripRef = useRef<HTMLDivElement>(null);
@@ -282,6 +283,31 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef }: Prop
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {showAnchorText && isPdf && (
+        <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <ScanText size={14} className="text-teal-400 shrink-0" />
+            <p className="text-slate-300 text-xs font-semibold">Smart Page Detection</p>
+          </div>
+          <p className="text-slate-500 text-xs leading-relaxed">
+            Enter text that appears near the signature on the page (e.g. "Authorized Signatory", "Client Signature"). The correct page will be found automatically, regardless of document ordering.
+          </p>
+          <input
+            type="text"
+            value={mask?.anchorText ?? ''}
+            onChange={e => onMaskChange({ ...(mask ?? { x: 0, y: 0, width: 0, height: 0 }), anchorText: e.target.value })}
+            placeholder="e.g. Authorized Signatory"
+            className="w-full bg-slate-900 border border-slate-600 focus:border-teal-500 outline-none rounded-lg px-3 py-2 text-white text-sm placeholder:text-slate-500 transition-colors"
+          />
+          {mask?.anchorText && (
+            <p className="text-teal-400 text-xs flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-teal-400 rounded-full" />
+              Will auto-find page containing &ldquo;{mask.anchorText}&rdquo;
+            </p>
+          )}
         </div>
       )}
 

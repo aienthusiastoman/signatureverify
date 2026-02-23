@@ -45,6 +45,23 @@ export async function renderPdfToCanvas(file: File): Promise<HTMLCanvasElement> 
   return renderPdfPageToCanvas(file, 1);
 }
 
+export async function findPageByAnchorText(file: File, anchorText: string): Promise<number | null> {
+  const pdfjsLib = getPdfjsLib();
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const search = anchorText.toLowerCase().trim();
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = (textContent.items as any[])
+      .map((item: any) => item.str)
+      .join(' ')
+      .toLowerCase();
+    if (pageText.includes(search)) return i;
+  }
+  return null;
+}
+
 export async function fileToCanvas(file: File): Promise<HTMLCanvasElement> {
   return new Promise((resolve, reject) => {
     if (file.type === 'application/pdf') {

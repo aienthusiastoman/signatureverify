@@ -4,6 +4,7 @@ export interface MaskRect {
   width: number;
   height: number;
   page?: number;
+  anchorText?: string;
 }
 
 export interface UploadedFile {
