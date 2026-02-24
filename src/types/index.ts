@@ -58,6 +58,7 @@ export interface ProcessResponse {
 
 export type AppView =
   | 'app'
+  | 'history'
   | 'profile'
   | 'api-keys'
   | 'api-docs'

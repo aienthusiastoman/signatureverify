@@ -16,6 +16,7 @@ import ApiTestPage from './pages/ApiTestPage';
 import CustomerManagementPage from './pages/CustomerManagementPage';
 import ThemingPage from './pages/ThemingPage';
 import TemplatesPage from './pages/TemplatesPage';
+import HistoryPage from './pages/HistoryPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { useSignatureProcess } from './hooks/useSignatureProcess';
@@ -338,6 +339,7 @@ function AuthenticatedApp() {
 
   const PAGE_TITLES: Record<AppView, string> = {
     'app': 'Verify Signatures',
+    'history': 'Verification History',
     'profile': 'Profile',
     'api-keys': 'API Keys',
     'api-docs': 'API Documentation',
@@ -367,6 +369,7 @@ function AuthenticatedApp() {
 
         <main className="px-8 py-8">
           {appView === 'app' && <CompareToolContent />}
+          {appView === 'history' && <HistoryPage />}
           {appView === 'profile' && <ProfilePage />}
           {appView === 'api-keys' && <ApiKeysPage />}
           {appView === 'api-docs' && <ApiDocPage />}
