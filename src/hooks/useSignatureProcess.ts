@@ -51,6 +51,8 @@ export function useSignatureProcess() {
       formData.append('mask1', JSON.stringify(region1.mask));
       formData.append('mask2', JSON.stringify(region2.mask));
       formData.append('scale_file2', String(scaleFile2));
+      formData.append('matched_page1', String(region1.mask.page ?? 1));
+      formData.append('matched_page2', String(region2.mask.page ?? 1));
 
       const response = await fetch(EDGE_FN_URL, {
         method: 'POST',

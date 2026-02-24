@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { FlaskConical, Play, Copy, CheckCircle, Loader2, Upload, X, ChevronDown, LayoutTemplate } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { renderPdfPageToCanvas, canvasToBlob } from '../lib/imageUtils';
+import { renderPdfPageToCanvas, canvasToBlob, findPageByAnchorText } from '../lib/imageUtils';
 import type { SavedTemplate, MaskRect } from '../types';
 
 type Language = 'curl' | 'javascript' | 'python' | 'php' | 'go';
@@ -27,6 +27,7 @@ interface MaskInput {
   width: string;
   height: string;
   page: string;
+  anchorText?: string;
 }
 
 const BLANK_MASK: MaskInput = { x: '100', y: '400', width: '300', height: '100', page: '1' };
@@ -40,6 +41,7 @@ function maskToInput(m: MaskRect): MaskInput {
     width: String(m.width),
     height: String(m.height),
     page: String(m.page ?? 1),
+    anchorText: m.anchorText,
   };
 }
 
@@ -265,8 +267,20 @@ export default function ApiTestPage() {
 
     try {
       const { data: { session: freshSession } } = await supabase.auth.getSession();
-      const page1 = +activeMask1.page || 1;
-      const page2 = +activeMask2.page || 1;
+
+      let page1 = +activeMask1.page || 1;
+      let page2 = +activeMask2.page || 1;
+
+      if (file1.type === 'application/pdf' && activeMask1.anchorText?.trim()) {
+        const found = await findPageByAnchorText(file1, activeMask1.anchorText);
+        if (found !== null) page1 = found;
+      }
+
+      if (file2.type === 'application/pdf' && activeMask2.anchorText?.trim()) {
+        const found = await findPageByAnchorText(file2, activeMask2.anchorText);
+        if (found !== null) page2 = found;
+      }
+
       const [b64_1, b64_2] = await Promise.all([toBase64(file1, page1), toBase64(file2, page2)]);
 
       const payload: Record<string, unknown> = {
@@ -274,8 +288,10 @@ export default function ApiTestPage() {
         file2_base64: b64_2,
         file1_name: file1.name,
         file2_name: file2.name,
-        mask1: { x: +activeMask1.x, y: +activeMask1.y, width: +activeMask1.width, height: +activeMask1.height, page: +activeMask1.page },
-        mask2: { x: +activeMask2.x, y: +activeMask2.y, width: +activeMask2.width, height: +activeMask2.height, page: +activeMask2.page },
+        mask1: { x: +activeMask1.x, y: +activeMask1.y, width: +activeMask1.width, height: +activeMask1.height, page: page1 },
+        mask2: { x: +activeMask2.x, y: +activeMask2.y, width: +activeMask2.width, height: +activeMask2.height, page: page2 },
+        matched_page1: page1,
+        matched_page2: page2,
       };
 
       if (useTemplate && selectedTemplateId) {
@@ -421,11 +437,21 @@ export default function ApiTestPage() {
                             <p className="text-slate-500 mb-1">Region 1</p>
                             <p className="text-slate-300">x:{selectedTemplate.mask1.x} y:{selectedTemplate.mask1.y}</p>
                             <p className="text-slate-300">{selectedTemplate.mask1.width}×{selectedTemplate.mask1.height} p{selectedTemplate.mask1.page ?? 1}</p>
+                            {selectedTemplate.mask1.anchorText && (
+                              <p className="text-teal-400 mt-1 truncate" title={selectedTemplate.mask1.anchorText}>
+                                anchor: {selectedTemplate.mask1.anchorText}
+                              </p>
+                            )}
                           </div>
                           <div>
                             <p className="text-slate-500 mb-1">Region 2</p>
                             <p className="text-slate-300">x:{selectedTemplate.mask2.x} y:{selectedTemplate.mask2.y}</p>
                             <p className="text-slate-300">{selectedTemplate.mask2.width}×{selectedTemplate.mask2.height} p{selectedTemplate.mask2.page ?? 1}</p>
+                            {selectedTemplate.mask2.anchorText && (
+                              <p className="text-teal-400 mt-1 truncate" title={selectedTemplate.mask2.anchorText}>
+                                anchor: {selectedTemplate.mask2.anchorText}
+                              </p>
+                            )}
                           </div>
                         </div>
                       )}

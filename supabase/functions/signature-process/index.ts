@@ -242,7 +242,9 @@ async function generatePDF(
   file1Name: string,
   file2Name: string,
   jobId: string,
-  timestamp: string
+  timestamp: string,
+  matchedPage1?: number,
+  matchedPage2?: number
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const page = doc.addPage(PageSizes.A4);
@@ -289,12 +291,18 @@ async function generatePDF(
     const colX = 30 + i * (colW + 30);
     const label = i === 0 ? "Document 1 — Reference" : "Document 2 — To Verify";
     const fname = i === 0 ? file1Name : file2Name;
+    const matchedPage = i === 0 ? matchedPage1 : matchedPage2;
 
     page.drawRectangle({ x: colX, y: docSectionY - 220, width: colW, height: 210, color: cardBg, borderColor, borderWidth: 1 });
     page.drawRectangle({ x: colX, y: docSectionY - 30, width: colW, height: 30, color: i === 0 ? teal : rgb(0.06, 0.62, 0.45) });
     page.drawText(label, { x: colX + 12, y: docSectionY - 20, size: 9, font, color: white });
     page.drawText(fname.length > 35 ? fname.slice(0, 32) + "..." : fname, { x: colX + 12, y: docSectionY - 50, size: 8, font: fontReg, color: muted });
-    page.drawText("Extracted Signature Region (ink strokes only)", { x: colX + 12, y: docSectionY - 65, size: 8, font: fontReg, color: muted });
+    if (matchedPage !== undefined) {
+      page.drawText(`Source page: ${matchedPage}`, { x: colX + 12, y: docSectionY - 63, size: 8, font, color: rgb(0.0, 0.75, 0.65) });
+      page.drawText("Extracted Signature Region (ink strokes only)", { x: colX + 12, y: docSectionY - 75, size: 7, font: fontReg, color: muted });
+    } else {
+      page.drawText("Extracted Signature Region (ink strokes only)", { x: colX + 12, y: docSectionY - 65, size: 8, font: fontReg, color: muted });
+    }
   }
 
   const imgMaxW = colW - 30;
@@ -341,7 +349,7 @@ async function generatePDF(
   return doc.save();
 }
 
-async function resolveImageBuffers(formData: FormData): Promise<{ buf1: ArrayBuffer; buf2: ArrayBuffer; file1Name: string; file2Name: string; file1Path: string; file2Path: string; mask1Raw: string | null; mask2Raw: string | null; scaleFile2: number }> {
+async function resolveImageBuffers(formData: FormData): Promise<{ buf1: ArrayBuffer; buf2: ArrayBuffer; file1Name: string; file2Name: string; file1Path: string; file2Path: string; mask1Raw: string | null; mask2Raw: string | null; scaleFile2: number; matchedPage1: number | undefined; matchedPage2: number | undefined }> {
   const file1Name = (formData.get("file1_name") as string) || "document1";
   const file2Name = (formData.get("file2_name") as string) || "document2";
   const file1Path = (formData.get("file1_path") as string) || "";
@@ -349,6 +357,10 @@ async function resolveImageBuffers(formData: FormData): Promise<{ buf1: ArrayBuf
   const mask1Raw = formData.get("mask1") as string | null;
   const mask2Raw = formData.get("mask2") as string | null;
   const scaleFile2 = parseFloat((formData.get("scale_file2") as string) || "1.5");
+  const mp1 = formData.get("matched_page1") as string | null;
+  const mp2 = formData.get("matched_page2") as string | null;
+  const matchedPage1 = mp1 ? parseInt(mp1) : undefined;
+  const matchedPage2 = mp2 ? parseInt(mp2) : undefined;
 
   const sig1File = formData.get("signature1") as File | null;
   const sig2File = formData.get("signature2") as File | null;
@@ -369,10 +381,10 @@ async function resolveImageBuffers(formData: FormData): Promise<{ buf1: ArrayBuf
     throw new Error("Either signature files or base64-encoded files are required");
   }
 
-  return { buf1, buf2, file1Name, file2Name, file1Path, file2Path, mask1Raw, mask2Raw, scaleFile2 };
+  return { buf1, buf2, file1Name, file2Name, file1Path, file2Path, mask1Raw, mask2Raw, scaleFile2, matchedPage1, matchedPage2 };
 }
 
-async function resolveFromJson(body: Record<string, unknown>): Promise<{ buf1: ArrayBuffer; buf2: ArrayBuffer; file1Name: string; file2Name: string; file1Path: string; file2Path: string; mask1Raw: string | null; mask2Raw: string | null; scaleFile2: number; templateId: string | null }> {
+async function resolveFromJson(body: Record<string, unknown>): Promise<{ buf1: ArrayBuffer; buf2: ArrayBuffer; file1Name: string; file2Name: string; file1Path: string; file2Path: string; mask1Raw: string | null; mask2Raw: string | null; scaleFile2: number; templateId: string | null; matchedPage1: number | undefined; matchedPage2: number | undefined }> {
   const file1Name = (body.file1_name as string) || "document1";
   const file2Name = (body.file2_name as string) || "document2";
   const file1Path = (body.file1_path as string) || "";
@@ -381,6 +393,8 @@ async function resolveFromJson(body: Record<string, unknown>): Promise<{ buf1: A
   const mask2Raw = body.mask2 ? JSON.stringify(body.mask2) : null;
   const scaleFile2 = parseFloat(String(body.scale_file2 || "1.5"));
   const templateId = (body.template_id as string) || null;
+  const matchedPage1 = body.matched_page1 !== undefined ? Number(body.matched_page1) : undefined;
+  const matchedPage2 = body.matched_page2 !== undefined ? Number(body.matched_page2) : undefined;
 
   const b64f1 = body.file1_base64 as string | null;
   const b64f2 = body.file2_base64 as string | null;
@@ -390,7 +404,7 @@ async function resolveFromJson(body: Record<string, unknown>): Promise<{ buf1: A
   const buf1 = Buffer.from(b64f1, "base64").buffer;
   const buf2 = Buffer.from(b64f2, "base64").buffer;
 
-  return { buf1, buf2, file1Name, file2Name, file1Path, file2Path, mask1Raw, mask2Raw, scaleFile2, templateId };
+  return { buf1, buf2, file1Name, file2Name, file1Path, file2Path, mask1Raw, mask2Raw, scaleFile2, templateId, matchedPage1, matchedPage2 };
 }
 
 Deno.serve(async (req: Request) => {
@@ -410,6 +424,8 @@ Deno.serve(async (req: Request) => {
     let file1Name: string, file2Name: string, file1Path: string, file2Path: string;
     let mask1Raw: string | null, mask2Raw: string | null;
     let scaleFile2: number;
+    let matchedPage1: number | undefined;
+    let matchedPage2: number | undefined;
 
     if (contentType.includes("application/json")) {
       const body = await req.json() as Record<string, unknown>;
@@ -419,6 +435,8 @@ Deno.serve(async (req: Request) => {
       file1Path = resolved.file1Path; file2Path = resolved.file2Path;
       mask1Raw = resolved.mask1Raw; mask2Raw = resolved.mask2Raw;
       scaleFile2 = resolved.scaleFile2;
+      matchedPage1 = resolved.matchedPage1;
+      matchedPage2 = resolved.matchedPage2;
 
       if (resolved.templateId) {
         const { data: tpl } = await supabase.from("templates").select("mask1, mask2").eq("id", resolved.templateId).maybeSingle();
@@ -442,6 +460,8 @@ Deno.serve(async (req: Request) => {
       file1Path = resolved.file1Path; file2Path = resolved.file2Path;
       mask1Raw = resolved.mask1Raw; mask2Raw = resolved.mask2Raw;
       scaleFile2 = resolved.scaleFile2;
+      matchedPage1 = resolved.matchedPage1;
+      matchedPage2 = resolved.matchedPage2;
     }
 
     const { data: job, error: jobErr } = await supabase
@@ -478,7 +498,9 @@ Deno.serve(async (req: Request) => {
       file1Name,
       file2Name,
       job.id,
-      timestamp
+      timestamp,
+      matchedPage1,
+      matchedPage2
     );
 
     const resultPath = `results/${job.id}.pdf`;
@@ -508,13 +530,17 @@ Deno.serve(async (req: Request) => {
       result_path: resultPath,
     }).eq("id", job.id);
 
+    const responseBody: Record<string, unknown> = {
+      jobId: job.id,
+      confidenceScore: Math.round(confidenceScore * 10) / 10,
+      status: "completed",
+      resultUrl: urlData.publicUrl,
+    };
+    if (matchedPage1 !== undefined) responseBody.matchedPage1 = matchedPage1;
+    if (matchedPage2 !== undefined) responseBody.matchedPage2 = matchedPage2;
+
     return new Response(
-      JSON.stringify({
-        jobId: job.id,
-        confidenceScore: Math.round(confidenceScore * 10) / 10,
-        status: "completed",
-        resultUrl: urlData.publicUrl,
-      }),
+      JSON.stringify(responseBody),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

@@ -52,6 +52,8 @@ export interface ProcessResponse {
   confidenceScore: number;
   status: string;
   resultUrl: string;
+  matchedPage1?: number;
+  matchedPage2?: number;
 }
 
 export type AppView =

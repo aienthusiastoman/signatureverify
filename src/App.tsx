@@ -201,7 +201,7 @@ function CompareToolContent() {
             {activeDoc === 1 && file1 && (
               <div className="bg-slate-900/50 border border-slate-700 rounded-2xl p-5">
                 <p className="text-slate-300 text-sm font-semibold mb-3 truncate">{file1.file.name}</p>
-                <MaskEditor file={file1} mask={mask1} onMaskChange={setMask1} canvasRef={canvas1Ref} />
+                <MaskEditor file={file1} mask={mask1} onMaskChange={setMask1} canvasRef={canvas1Ref} showAnchorText />
               </div>
             )}
             {activeDoc === 2 && file2 && (
