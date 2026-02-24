@@ -1,0 +1,371 @@
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Plus, Trash2, ArrowLeft, Save, Loader2, FileSearch, CheckCircle2, AlertCircle } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import FileDropZone from '../components/FileDropZone';
+import MaskEditor from '../components/MaskEditor';
+import type { SavedTemplate, UploadedFile, MaskRect } from '../types';
+
+function maskSummary(m: MaskRect): string {
+  const parts: string[] = [];
+  if (m.page && m.page > 1) parts.push(`Page ${m.page}`);
+  if (m.width > 0 && m.height > 0) parts.push(`${m.width}×${m.height}px`);
+  if (m.autoDetect) parts.push('Auto-detect');
+  return parts.length > 0 ? parts.join(' · ') : 'No region';
+}
+
+interface CreateState {
+  name: string;
+  file1: UploadedFile | null;
+  file2: UploadedFile | null;
+  mask1: MaskRect | null;
+  mask2: MaskRect | null;
+}
+
+const emptyCreate = (): CreateState => ({
+  name: '',
+  file1: null,
+  file2: null,
+  mask1: null,
+  mask2: null,
+});
+
+export default function MasksPage() {
+  const [masks, setMasks] = useState<SavedTemplate[]>([]);
+  const [loadingList, setLoadingList] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [form, setForm] = useState<CreateState>(emptyCreate());
+
+  const canvas1Ref = useRef<HTMLCanvasElement | null>(null);
+  const canvas2Ref = useRef<HTMLCanvasElement | null>(null);
+
+  const fetchMasks = useCallback(async () => {
+    setLoadingList(true);
+    const { data } = await supabase
+      .from('templates')
+      .select('*')
+      .order('created_at', { ascending: false });
+    setMasks((data as SavedTemplate[]) ?? []);
+    setLoadingList(false);
+  }, []);
+
+  useEffect(() => { fetchMasks(); }, [fetchMasks]);
+
+  const handleStartCreate = () => {
+    setForm(emptyCreate());
+    setSaveError(null);
+    setSaveSuccess(false);
+    canvas1Ref.current = null;
+    canvas2Ref.current = null;
+    setCreating(true);
+  };
+
+  const handleCancelCreate = () => {
+    if (form.file1?.previewUrl) URL.revokeObjectURL(form.file1.previewUrl);
+    if (form.file2?.previewUrl) URL.revokeObjectURL(form.file2.previewUrl);
+    setCreating(false);
+    setForm(emptyCreate());
+    setSaveError(null);
+    setSaveSuccess(false);
+  };
+
+  const handleSave = async () => {
+    if (!form.name.trim() || !form.mask1 || !form.mask2) return;
+    setSaving(true);
+    setSaveError(null);
+    const { error } = await supabase.from('templates').insert({
+      name: form.name.trim(),
+      mask1: form.mask1,
+      mask2: form.mask2,
+    });
+    setSaving(false);
+    if (error) {
+      setSaveError(error.message);
+    } else {
+      setSaveSuccess(true);
+      await fetchMasks();
+      setTimeout(() => {
+        handleCancelCreate();
+      }, 900);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    await supabase.from('templates').delete().eq('id', id);
+    setMasks(prev => prev.filter(m => m.id !== id));
+    setDeletingId(null);
+  };
+
+  const canSave = !!form.name.trim() &&
+    !!form.mask1 && (form.mask1.autoDetect || form.mask1.width > 5) &&
+    !!form.mask2 && (form.mask2.autoDetect || form.mask2.width > 5);
+
+  if (creating) {
+    return (
+      <div className="max-w-5xl mx-auto space-y-6">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleCancelCreate}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold rounded-xl transition-colors"
+          >
+            <ArrowLeft size={15} /> Back
+          </button>
+          <div>
+            <h2 className="text-white text-xl font-black">Create New Mask</h2>
+            <p className="text-slate-400 text-sm font-light">Upload a sample document for each slot and draw the signature region</p>
+          </div>
+        </div>
+
+        <div className="bg-slate-900/50 border border-slate-700 rounded-2xl p-5 space-y-3">
+          <label className="text-slate-300 text-sm font-semibold">Mask Name</label>
+          <input
+            type="text"
+            value={form.name}
+            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            placeholder="e.g. Insurance Form — Insured Signature"
+            className="w-full bg-slate-900 border border-slate-600 focus:border-teal-500 outline-none rounded-xl px-4 py-3 text-white text-sm placeholder:text-slate-500 transition-colors"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="bg-slate-900/50 border border-slate-700 rounded-2xl p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-teal-400" />
+              <p className="text-slate-200 text-sm font-bold">Document 1 — Reference</p>
+              {form.mask1 && (form.mask1.autoDetect || form.mask1.width > 5) && (
+                <CheckCircle2 size={14} className="text-emerald-400 ml-auto" />
+              )}
+            </div>
+            <p className="text-slate-500 text-xs">Upload a sample PDF to draw the signature region for document type 1</p>
+            {!form.file1 ? (
+              <FileDropZone
+                label="Drop sample PDF here"
+                file={null}
+                onFile={f => setForm(prev => ({ ...prev, file1: f, mask1: null }))}
+                onClear={() => {}}
+              />
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 bg-slate-800 rounded-xl px-3 py-2">
+                  <span className="text-slate-300 text-xs flex-1 truncate">{form.file1.file.name}</span>
+                  <button
+                    onClick={() => {
+                      if (form.file1?.previewUrl) URL.revokeObjectURL(form.file1.previewUrl);
+                      canvas1Ref.current = null;
+                      setForm(f => ({ ...f, file1: null, mask1: null }));
+                    }}
+                    className="text-slate-500 hover:text-red-400 transition-colors"
+                  >
+                    ×
+                  </button>
+                </div>
+                <MaskEditor
+                  file={form.file1}
+                  mask={form.mask1}
+                  onMaskChange={m => setForm(f => ({ ...f, mask1: m }))}
+                  canvasRef={canvas1Ref}
+                  showAnchorText
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="bg-slate-900/50 border border-slate-700 rounded-2xl p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+              <p className="text-slate-200 text-sm font-bold">Document 2 — To Verify</p>
+              {form.mask2 && (form.mask2.autoDetect || form.mask2.width > 5) && (
+                <CheckCircle2 size={14} className="text-emerald-400 ml-auto" />
+              )}
+            </div>
+            <p className="text-slate-500 text-xs">Upload a sample PDF to draw the signature region for document type 2</p>
+            {!form.file2 ? (
+              <FileDropZone
+                label="Drop sample PDF here"
+                file={null}
+                onFile={f => setForm(prev => ({ ...prev, file2: f, mask2: null }))}
+                onClear={() => {}}
+              />
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 bg-slate-800 rounded-xl px-3 py-2">
+                  <span className="text-slate-300 text-xs flex-1 truncate">{form.file2.file.name}</span>
+                  <button
+                    onClick={() => {
+                      if (form.file2?.previewUrl) URL.revokeObjectURL(form.file2.previewUrl);
+                      canvas2Ref.current = null;
+                      setForm(f => ({ ...f, file2: null, mask2: null }));
+                    }}
+                    className="text-slate-500 hover:text-red-400 transition-colors"
+                  >
+                    ×
+                  </button>
+                </div>
+                <MaskEditor
+                  file={form.file2}
+                  mask={form.mask2}
+                  onMaskChange={m => setForm(f => ({ ...f, mask2: m }))}
+                  canvasRef={canvas2Ref}
+                  showAnchorText
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {saveError && (
+          <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+            <AlertCircle size={15} />
+            {saveError}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3 pb-8">
+          <button
+            onClick={handleCancelCreate}
+            className="px-5 py-3 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl transition-colors text-sm"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!canSave || saving || saveSuccess}
+            className="flex items-center gap-2 px-6 py-3 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors shadow-lg shadow-teal-500/20 text-sm"
+          >
+            {saveSuccess ? (
+              <><CheckCircle2 size={15} /> Saved!</>
+            ) : saving ? (
+              <><Loader2 size={15} className="animate-spin" /> Saving...</>
+            ) : (
+              <><Save size={15} /> Save Mask</>
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-white text-xl font-black">Masks</h2>
+          <p className="text-slate-400 text-sm font-light mt-0.5">
+            Define signature regions for document pairs — reuse across comparisons
+          </p>
+        </div>
+        <button
+          onClick={handleStartCreate}
+          className="flex items-center gap-2 px-4 py-2.5 bg-teal-500 hover:bg-teal-400 text-white font-bold rounded-xl text-sm transition-colors shadow-lg shadow-teal-500/20"
+        >
+          <Plus size={15} /> New Mask
+        </button>
+      </div>
+
+      {loadingList ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-slate-400 text-sm">Loading masks...</p>
+          </div>
+        </div>
+      ) : masks.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center">
+            <FileSearch size={24} className="text-slate-500" />
+          </div>
+          <div className="text-center">
+            <p className="text-slate-300 font-semibold">No masks yet</p>
+            <p className="text-slate-500 text-sm mt-1">Create a mask to save signature regions for quick reuse</p>
+          </div>
+          <button
+            onClick={handleStartCreate}
+            className="flex items-center gap-2 px-5 py-2.5 bg-teal-500 hover:bg-teal-400 text-white font-bold rounded-xl text-sm transition-colors"
+          >
+            <Plus size={14} /> Create Your First Mask
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {masks.map(mask => (
+            <MaskCard
+              key={mask.id}
+              mask={mask}
+              deleting={deletingId === mask.id}
+              onDelete={() => handleDelete(mask.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface MaskCardProps {
+  mask: SavedTemplate;
+  deleting: boolean;
+  onDelete: () => void;
+}
+
+function MaskCard({ mask, deleting, onDelete }: MaskCardProps) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  return (
+    <div className="bg-slate-900/50 border border-slate-700 hover:border-slate-500 rounded-2xl p-5 space-y-4 transition-colors group">
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <p className="text-white font-bold text-sm truncate">{mask.name}</p>
+          <p className="text-slate-500 text-xs mt-0.5">
+            {new Date(mask.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </p>
+        </div>
+        {!confirmDelete ? (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            disabled={deleting}
+            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-all"
+          >
+            <Trash2 size={14} />
+          </button>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => { onDelete(); setConfirmDelete(false); }}
+              disabled={deleting}
+              className="px-2.5 py-1 text-xs font-bold rounded-lg bg-red-500 hover:bg-red-400 text-white transition-colors"
+            >
+              {deleting ? '...' : 'Delete'}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <RegionRow label="Doc 1" color="teal" maskSummaryText={maskSummary(mask.mask1)} />
+        <RegionRow label="Doc 2" color="amber" maskSummaryText={maskSummary(mask.mask2)} />
+      </div>
+    </div>
+  );
+}
+
+function RegionRow({ label, color, maskSummaryText }: { label: string; color: 'teal' | 'amber'; maskSummaryText: string }) {
+  const dot = color === 'teal' ? 'bg-teal-400' : 'bg-amber-400';
+  const text = color === 'teal' ? 'text-teal-400' : 'text-amber-400';
+  return (
+    <div className="flex items-center gap-2.5 bg-slate-800/60 rounded-xl px-3 py-2">
+      <div className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+      <span className={`text-xs font-bold shrink-0 ${text}`}>{label}</span>
+      <span className="text-slate-400 text-xs truncate">{maskSummaryText}</span>
+    </div>
+  );
+}

@@ -1,4 +1,4 @@
-import { FileSignature, User, Key, BookOpen, FlaskConical, Users, Palette, LogOut, ChevronRight, LayoutTemplate, History } from 'lucide-react';
+import { FileSignature, User, Key, BookOpen, FlaskConical, Users, Palette, LogOut, ChevronRight, LayoutTemplate, History, ScanLine } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import type { AppView } from '../types';
@@ -16,6 +16,7 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { id: 'app', label: 'Verify Signatures', icon: FileSignature },
       { id: 'history', label: 'History', icon: History },
+      { id: 'masks', label: 'Masks', icon: ScanLine },
     ],
   },
   {

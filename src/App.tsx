@@ -7,6 +7,7 @@ import MaskEditor from './components/MaskEditor';
 import SignaturePreview from './components/SignaturePreview';
 import ResultsPanel from './components/ResultsPanel';
 import TemplatePanel from './components/TemplatePanel';
+import MaskSelector from './components/MaskSelector';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import ProfilePage from './pages/ProfilePage';
@@ -17,6 +18,7 @@ import CustomerManagementPage from './pages/CustomerManagementPage';
 import ThemingPage from './pages/ThemingPage';
 import TemplatesPage from './pages/TemplatesPage';
 import HistoryPage from './pages/HistoryPage';
+import MasksPage from './pages/MasksPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { useSignatureProcess } from './hooks/useSignatureProcess';
@@ -198,7 +200,7 @@ function CompareToolContent() {
           </div>
 
           <div className="max-w-3xl mx-auto">
-            <TemplatePanel onLoad={handleLoadTemplate} mask1={mask1} mask2={mask2} />
+            <MaskSelector onApply={handleLoadTemplate} />
           </div>
 
           <div className="flex justify-center gap-2">
@@ -367,6 +369,7 @@ function AuthenticatedApp() {
   const PAGE_TITLES: Record<AppView, string> = {
     'app': 'Verify Signatures',
     'history': 'Verification History',
+    'masks': 'Masks',
     'profile': 'Profile',
     'api-keys': 'API Keys',
     'api-docs': 'API Documentation',
@@ -397,6 +400,7 @@ function AuthenticatedApp() {
         <main className="px-8 py-8">
           {appView === 'app' && <CompareToolContent />}
           {appView === 'history' && <HistoryPage />}
+          {appView === 'masks' && <MasksPage />}
           {appView === 'profile' && <ProfilePage />}
           {appView === 'api-keys' && <ApiKeysPage />}
           {appView === 'api-docs' && <ApiDocPage />}
