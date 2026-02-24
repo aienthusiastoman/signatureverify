@@ -233,9 +233,9 @@ export default function ApiTestPage() {
   const selectedKey = apiKeys.find(k => k.id === selectedKeyId);
   const keyLabel = selectedKey ? `${selectedKey.key_prefix}••••••••••••` : 'svk_live_YOUR_KEY';
 
-  const toBase64 = async (file: File): Promise<string> => {
+  const toBase64 = async (file: File, pageNum = 1): Promise<string> => {
     if (file.type === 'application/pdf') {
-      const canvas = await renderPdfPageToCanvas(file, 1);
+      const canvas = await renderPdfPageToCanvas(file, pageNum);
       const blob = await canvasToBlob(canvas);
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -265,7 +265,9 @@ export default function ApiTestPage() {
 
     try {
       const { data: { session: freshSession } } = await supabase.auth.getSession();
-      const [b64_1, b64_2] = await Promise.all([toBase64(file1), toBase64(file2)]);
+      const page1 = +activeMask1.page || 1;
+      const page2 = +activeMask2.page || 1;
+      const [b64_1, b64_2] = await Promise.all([toBase64(file1, page1), toBase64(file2, page2)]);
 
       const payload: Record<string, unknown> = {
         file1_base64: b64_1,

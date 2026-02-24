@@ -224,10 +224,12 @@ async function cropImageToMask(
   mask: { x: number; y: number; width: number; height: number }
 ): Promise<ArrayBuffer> {
   const img = await Jimp.read(Buffer.from(buf));
-  const x = Math.max(0, Math.round(mask.x));
-  const y = Math.max(0, Math.round(mask.y));
-  const w = Math.min(img.getWidth() - x, Math.max(1, Math.round(mask.width)));
-  const h = Math.min(img.getHeight() - y, Math.max(1, Math.round(mask.height)));
+  const imgW = img.getWidth();
+  const imgH = img.getHeight();
+  const x = Math.max(0, Math.min(Math.round(mask.x), imgW - 1));
+  const y = Math.max(0, Math.min(Math.round(mask.y), imgH - 1));
+  const w = Math.max(1, Math.min(Math.round(mask.width), imgW - x));
+  const h = Math.max(1, Math.min(Math.round(mask.height), imgH - y));
   img.crop(x, y, w, h);
   const outBuf = await img.getBufferAsync(Jimp.MIME_PNG);
   return outBuf.buffer as ArrayBuffer;
