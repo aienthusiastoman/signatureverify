@@ -6,6 +6,7 @@ export interface MaskRect {
   page?: number;
   anchorText?: string;
   pageThumbnail?: string;
+  pageThumbnailMaskFrac?: { x: number; y: number; w: number; h: number };
   autoDetect?: boolean;
 }
 

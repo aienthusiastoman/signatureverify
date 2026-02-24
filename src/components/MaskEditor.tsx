@@ -184,6 +184,13 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     drawOverlay({ x: Math.min(pos.x, startPos.x), y: Math.min(pos.y, startPos.y), width: Math.abs(pos.x - startPos.x), height: Math.abs(pos.y - startPos.y) });
   };
 
+  const makeFrac = (natural: { x: number; y: number; width: number; height: number }, c: HTMLCanvasElement) => ({
+    x: natural.x / c.width,
+    y: natural.y / c.height,
+    w: natural.width / c.width,
+    h: natural.height / c.height,
+  });
+
   const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!drawing || autoDetect) return;
     setDrawing(false);
@@ -191,8 +198,10 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     const displayMask: MaskRect = { x: Math.min(pos.x, startPos.x), y: Math.min(pos.y, startPos.y), width: Math.abs(pos.x - startPos.x), height: Math.abs(pos.y - startPos.y) };
     if (displayMask.width > 5 && displayMask.height > 5) {
       const natural = scaleToNatural(displayMask);
-      const thumb = canvasRef.current ? captureStructuralThumbnail(canvasRef.current) : undefined;
-      onMaskChange({ ...natural, anchorText: mask?.anchorText, pageThumbnail: thumb, autoDetect: false });
+      const c = canvasRef.current;
+      const frac = c ? makeFrac(natural, c) : undefined;
+      const thumb = c ? captureStructuralThumbnail(c, natural) : undefined;
+      onMaskChange({ ...natural, anchorText: mask?.anchorText, pageThumbnail: thumb, pageThumbnailMaskFrac: frac, autoDetect: false });
     }
   };
 
@@ -200,8 +209,9 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     const c = canvasRef.current;
     if (!c) return;
     const detected = autoDetectSignature(c);
-    const thumb = captureStructuralThumbnail(c);
-    onMaskChange({ ...detected, page: selectedPage, anchorText: mask?.anchorText, pageThumbnail: thumb, autoDetect: false });
+    const frac = makeFrac(detected, c);
+    const thumb = captureStructuralThumbnail(c, detected);
+    onMaskChange({ ...detected, page: selectedPage, anchorText: mask?.anchorText, pageThumbnail: thumb, pageThumbnailMaskFrac: frac, autoDetect: false });
   };
 
   const handleToggleAutoDetect = () => {
@@ -209,9 +219,9 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     const newVal = !autoDetect;
     if (newVal && c) {
       const thumb = captureStructuralThumbnail(c);
-      onMaskChange({ x: 0, y: 0, width: c.width, height: c.height, page: selectedPage, anchorText: mask?.anchorText, pageThumbnail: thumb, autoDetect: true });
+      onMaskChange({ x: 0, y: 0, width: c.width, height: c.height, page: selectedPage, anchorText: mask?.anchorText, pageThumbnail: thumb, pageThumbnailMaskFrac: undefined, autoDetect: true });
     } else {
-      onMaskChange({ x: 0, y: 0, width: 0, height: 0, page: selectedPage, anchorText: mask?.anchorText, pageThumbnail: mask?.pageThumbnail, autoDetect: false });
+      onMaskChange({ x: 0, y: 0, width: 0, height: 0, page: selectedPage, anchorText: mask?.anchorText, pageThumbnail: mask?.pageThumbnail, pageThumbnailMaskFrac: mask?.pageThumbnailMaskFrac, autoDetect: false });
     }
   };
 

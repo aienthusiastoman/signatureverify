@@ -97,7 +97,11 @@ function regionHasInkContent(
   return getRegionInkRatio(canvas, mask) >= minDarkRatio;
 }
 
-export function captureStructuralThumbnail(canvas: HTMLCanvasElement, targetWidth = 150): string {
+export function captureStructuralThumbnail(
+  canvas: HTMLCanvasElement,
+  naturalMask?: { x: number; y: number; width: number; height: number },
+  targetWidth = 150
+): string {
   const scale = targetWidth / canvas.width;
   const w = targetWidth;
   const h = Math.round(canvas.height * scale);
@@ -111,6 +115,18 @@ export function captureStructuralThumbnail(canvas: HTMLCanvasElement, targetWidt
   for (let i = 0; i < d.length; i += 4) {
     const g = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
     d[i] = d[i + 1] = d[i + 2] = g;
+  }
+  if (naturalMask && canvas.width > 0 && canvas.height > 0) {
+    const mx = Math.round(naturalMask.x * scale);
+    const my = Math.round(naturalMask.y * scale);
+    const mw = Math.round(naturalMask.width * scale);
+    const mh = Math.round(naturalMask.height * scale);
+    for (let py = my; py < Math.min(h, my + mh); py++) {
+      for (let px = mx; px < Math.min(w, mx + mw); px++) {
+        const idx = (py * w + px) * 4;
+        d[idx] = d[idx + 1] = d[idx + 2] = 200;
+      }
+    }
   }
   ctx.putImageData(img, 0, 0);
   return thumb.toDataURL('image/jpeg', 0.75);
@@ -161,14 +177,39 @@ async function dataUrlToGrayPixels(dataUrl: string, w: number, h: number): Promi
   });
 }
 
-export async function findPageByThumbnail(file: File, refThumbnailDataUrl: string): Promise<number> {
+function neutralizeRegion(
+  pixels: number[],
+  frac: { x: number; y: number; w: number; h: number },
+  imgW: number,
+  imgH: number,
+  value = 200
+): number[] {
+  const out = pixels.slice();
+  const px = Math.round(frac.x * imgW);
+  const py = Math.round(frac.y * imgH);
+  const pw = Math.round(frac.w * imgW);
+  const ph = Math.round(frac.h * imgH);
+  for (let y = py; y < Math.min(imgH, py + ph); y++) {
+    for (let x = px; x < Math.min(imgW, px + pw); x++) {
+      out[y * imgW + x] = value;
+    }
+  }
+  return out;
+}
+
+export async function findPageByThumbnail(
+  file: File,
+  refThumbnailDataUrl: string,
+  maskFrac?: { x: number; y: number; w: number; h: number }
+): Promise<number> {
   const pdfjsLib = getPdfjsLib();
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
   const MATCH_W = 120;
   const MATCH_H = 160;
-  const refPixels = await dataUrlToGrayPixels(refThumbnailDataUrl, MATCH_W, MATCH_H);
+  const rawRefPixels = await dataUrlToGrayPixels(refThumbnailDataUrl, MATCH_W, MATCH_H);
+  const refPixels = maskFrac ? neutralizeRegion(rawRefPixels, maskFrac, MATCH_W, MATCH_H) : rawRefPixels;
 
   let bestPage = 1;
   let bestScore = -Infinity;
@@ -182,7 +223,8 @@ export async function findPageByThumbnail(file: File, refThumbnailDataUrl: strin
     canvas.width = Math.round(vp.width);
     canvas.height = Math.round(vp.height);
     await page.render({ canvasContext: canvas.getContext('2d')!, viewport: vp }).promise;
-    const pixels = canvasToGrayPixels(canvas, MATCH_W, MATCH_H);
+    const rawPixels = canvasToGrayPixels(canvas, MATCH_W, MATCH_H);
+    const pixels = maskFrac ? neutralizeRegion(rawPixels, maskFrac, MATCH_W, MATCH_H) : rawPixels;
     const score = nccPixels(refPixels, pixels);
     if (score > bestScore) { bestScore = score; bestPage = i; }
   }

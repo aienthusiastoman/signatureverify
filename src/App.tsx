@@ -83,7 +83,7 @@ function CompareToolContent() {
     let foundPage: number | null = null;
 
     if (mask.pageThumbnail) {
-      foundPage = await findPageByThumbnail(file.file, mask.pageThumbnail);
+      foundPage = await findPageByThumbnail(file.file, mask.pageThumbnail, mask.pageThumbnailMaskFrac);
     }
 
     if (foundPage === null && mask.anchorText?.trim()) {
