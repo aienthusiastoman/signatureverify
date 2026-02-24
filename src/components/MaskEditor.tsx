@@ -98,7 +98,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
   const handlePageSelect = (page: number) => {
     if (page === selectedPage) return;
     setSelectedPage(page);
-    onMaskChange({ x: 0, y: 0, width: 0, height: 0, page });
+    onMaskChange({ x: 0, y: 0, width: 0, height: 0, page, anchorText: mask?.anchorText });
     thumbStripRef.current
       ?.querySelector(`[data-page="${page}"]`)
       ?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
@@ -187,18 +187,21 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     setDrawing(false);
     const pos = getRelPos(e);
     const displayMask: MaskRect = { x: Math.min(pos.x, startPos.x), y: Math.min(pos.y, startPos.y), width: Math.abs(pos.x - startPos.x), height: Math.abs(pos.y - startPos.y) };
-    if (displayMask.width > 5 && displayMask.height > 5) onMaskChange(scaleToNatural(displayMask));
+    if (displayMask.width > 5 && displayMask.height > 5) {
+      const natural = scaleToNatural(displayMask);
+      onMaskChange({ ...natural, anchorText: mask?.anchorText });
+    }
   };
 
   const handleAutoDetect = () => {
     const c = canvasRef.current;
     if (!c) return;
     const detected = autoDetectSignature(c);
-    onMaskChange({ ...detected, page: selectedPage });
+    onMaskChange({ ...detected, page: selectedPage, anchorText: mask?.anchorText });
   };
 
   const handleReset = () => {
-    onMaskChange({ x: 0, y: 0, width: 0, height: 0, page: selectedPage });
+    onMaskChange({ x: 0, y: 0, width: 0, height: 0, page: selectedPage, anchorText: mask?.anchorText });
     drawOverlay(null);
   };
 

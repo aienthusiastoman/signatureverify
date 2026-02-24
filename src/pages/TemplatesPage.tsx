@@ -74,14 +74,14 @@ function RegionDiagram({ mask, label, color }: { mask: MaskRect; label: string; 
   );
 }
 
-interface MaskInput { x: string; y: string; width: string; height: string; page: string; }
+interface MaskInput { x: string; y: string; width: string; height: string; page: string; anchorText?: string; }
 
 function maskToInput(m: MaskRect): MaskInput {
-  return { x: String(m.x), y: String(m.y), width: String(m.width), height: String(m.height), page: String(m.page ?? 1) };
+  return { x: String(m.x), y: String(m.y), width: String(m.width), height: String(m.height), page: String(m.page ?? 1), anchorText: m.anchorText ?? '' };
 }
 
 function inputToMask(i: MaskInput): MaskRect {
-  return { x: +i.x, y: +i.y, width: +i.width, height: +i.height, page: +i.page };
+  return { x: +i.x, y: +i.y, width: +i.width, height: +i.height, page: +i.page, anchorText: i.anchorText?.trim() || undefined };
 }
 
 function MaskInputFields({
@@ -100,11 +100,21 @@ function MaskInputFields({
     </div>
   );
   return (
-    <div>
-      <p className="text-slate-300 text-xs font-semibold mb-2 flex items-center">{dot}{label}</p>
+    <div className="space-y-3">
+      <p className="text-slate-300 text-xs font-semibold flex items-center">{dot}{label}</p>
       <div className="grid grid-cols-5 gap-2">
         {field('x', 'X')} {field('y', 'Y')} {field('width', 'Width')}
         {field('height', 'Height')} {field('page', 'Page')}
+      </div>
+      <div className="space-y-1">
+        <label className="text-slate-500 text-xs">Anchor Text (Smart Page Detection)</label>
+        <input
+          type="text"
+          value={value.anchorText ?? ''}
+          onChange={e => onChange({ ...value, anchorText: e.target.value })}
+          placeholder="e.g. Authorized Signatory"
+          className="w-full bg-slate-800 border border-slate-700 focus:border-teal-500 text-white text-xs rounded-lg px-2.5 py-2 outline-none transition-colors placeholder:text-slate-600"
+        />
       </div>
     </div>
   );
@@ -396,6 +406,12 @@ export default function TemplatesPage() {
                             </div>
                           ))}
                         </div>
+                        {mask.anchorText && (
+                          <div className="mt-2 pt-2 border-t border-slate-700/40">
+                            <span className="text-slate-500 text-xs block mb-0.5">Anchor Text</span>
+                            <span className="text-teal-400 text-xs font-mono">&ldquo;{mask.anchorText}&rdquo;</span>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

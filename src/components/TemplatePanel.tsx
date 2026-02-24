@@ -64,7 +64,8 @@ export default function TemplatePanel({ onLoad, mask1, mask2, showSave = false }
 
   const formatMaskLabel = (m: MaskRect) => {
     const page = m.page ? ` · p${m.page}` : '';
-    return `${m.width}×${m.height}${page}`;
+    const anchor = m.anchorText ? ` · "${m.anchorText}"` : '';
+    return `${m.width}×${m.height}${page}${anchor}`;
   };
 
   return (
