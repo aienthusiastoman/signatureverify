@@ -97,6 +97,99 @@ function regionHasInkContent(
   return getRegionInkRatio(canvas, mask) >= minDarkRatio;
 }
 
+export function captureStructuralThumbnail(canvas: HTMLCanvasElement, targetWidth = 150): string {
+  const scale = targetWidth / canvas.width;
+  const w = targetWidth;
+  const h = Math.round(canvas.height * scale);
+  const thumb = document.createElement('canvas');
+  thumb.width = w;
+  thumb.height = h;
+  const ctx = thumb.getContext('2d')!;
+  ctx.drawImage(canvas, 0, 0, w, h);
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const g = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+    d[i] = d[i + 1] = d[i + 2] = g;
+  }
+  ctx.putImageData(img, 0, 0);
+  return thumb.toDataURL('image/jpeg', 0.75);
+}
+
+function nccPixels(a: number[], b: number[]): number {
+  const n = Math.min(a.length, b.length);
+  let sA = 0, sB = 0;
+  for (let i = 0; i < n; i++) { sA += a[i]; sB += b[i]; }
+  const mA = sA / n, mB = sB / n;
+  let num = 0, dA = 0, dB = 0;
+  for (let i = 0; i < n; i++) {
+    const a_ = a[i] - mA, b_ = b[i] - mB;
+    num += a_ * b_; dA += a_ * a_; dB += b_ * b_;
+  }
+  const den = Math.sqrt(dA * dB);
+  return den < 1e-10 ? 0 : num / den;
+}
+
+function canvasToGrayPixels(canvas: HTMLCanvasElement, w: number, h: number): number[] {
+  const scaled = document.createElement('canvas');
+  scaled.width = w; scaled.height = h;
+  scaled.getContext('2d')!.drawImage(canvas, 0, 0, w, h);
+  const d = scaled.getContext('2d')!.getImageData(0, 0, w, h).data;
+  const pixels: number[] = [];
+  for (let i = 0; i < d.length; i += 4) {
+    pixels.push(Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]));
+  }
+  return pixels;
+}
+
+async function dataUrlToGrayPixels(dataUrl: string, w: number, h: number): Promise<number[]> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      const d = c.getContext('2d')!.getImageData(0, 0, w, h).data;
+      const pixels: number[] = [];
+      for (let i = 0; i < d.length; i += 4) {
+        pixels.push(Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]));
+      }
+      resolve(pixels);
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+export async function findPageByThumbnail(file: File, refThumbnailDataUrl: string): Promise<number> {
+  const pdfjsLib = getPdfjsLib();
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+  const MATCH_W = 120;
+  const MATCH_H = 160;
+  const refPixels = await dataUrlToGrayPixels(refThumbnailDataUrl, MATCH_W, MATCH_H);
+
+  let bestPage = 1;
+  let bestScore = -Infinity;
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const baseVP = page.getViewport({ scale: 1.0 });
+    const scale = MATCH_W / baseVP.width;
+    const vp = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(vp.width);
+    canvas.height = Math.round(vp.height);
+    await page.render({ canvasContext: canvas.getContext('2d')!, viewport: vp }).promise;
+    const pixels = canvasToGrayPixels(canvas, MATCH_W, MATCH_H);
+    const score = nccPixels(refPixels, pixels);
+    if (score > bestScore) { bestScore = score; bestPage = i; }
+  }
+
+  return bestPage;
+}
+
 export async function findPageByAnchorText(
   file: File,
   anchorText: string,

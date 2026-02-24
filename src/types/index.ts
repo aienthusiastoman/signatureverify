@@ -5,6 +5,8 @@ export interface MaskRect {
   height: number;
   page?: number;
   anchorText?: string;
+  pageThumbnail?: string;
+  autoDetect?: boolean;
 }
 
 export interface UploadedFile {

@@ -1,8 +1,8 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Wand2, RotateCcw, Move, ChevronLeft, ChevronRight, FileText, ScanText } from 'lucide-react';
+import { Wand2, RotateCcw, Move, ChevronLeft, ChevronRight, FileText, ScanText, Scan } from 'lucide-react';
 import type { MaskRect, UploadedFile } from '../types';
 import { autoDetectSignature } from '../lib/signatureDetect';
-import { renderPdfPageToCanvas, renderPdfThumbnail } from '../lib/imageUtils';
+import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail } from '../lib/imageUtils';
 
 interface Props {
   file: UploadedFile;
@@ -29,6 +29,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
   const [thumbsLoading, setThumbsLoading] = useState(false);
 
   const isPdf = file.type === 'pdf';
+  const autoDetect = mask?.autoDetect ?? false;
 
   useEffect(() => {
     const count = file.pageCount ?? 1;
@@ -98,7 +99,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
   const handlePageSelect = (page: number) => {
     if (page === selectedPage) return;
     setSelectedPage(page);
-    onMaskChange({ x: 0, y: 0, width: 0, height: 0, page, anchorText: mask?.anchorText });
+    onMaskChange({ x: 0, y: 0, width: 0, height: 0, page, anchorText: mask?.anchorText, autoDetect: mask?.autoDetect });
     thumbStripRef.current
       ?.querySelector(`[data-page="${page}"]`)
       ?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
@@ -135,7 +136,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     };
   };
 
-  const drawOverlay = useCallback((displayMask: MaskRect | null) => {
+  const drawOverlay = useCallback((displayMask: MaskRect | null, isAuto = false) => {
     const overlay = overlayRef.current;
     if (!overlay || !displaySize.w) return;
     overlay.width = displaySize.w;
@@ -148,13 +149,13 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     ctx.fillRect(0, 0, overlay.width, overlay.height);
     ctx.clearRect(displayMask.x, displayMask.y, displayMask.width, displayMask.height);
 
-    ctx.strokeStyle = '#3b82f6';
+    ctx.strokeStyle = isAuto ? '#10b981' : '#3b82f6';
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 3]);
     ctx.strokeRect(displayMask.x, displayMask.y, displayMask.width, displayMask.height);
     ctx.setLineDash([]);
 
-    ctx.fillStyle = '#3b82f6';
+    ctx.fillStyle = isAuto ? '#10b981' : '#3b82f6';
     [[displayMask.x, displayMask.y],
      [displayMask.x + displayMask.width, displayMask.y],
      [displayMask.x, displayMask.y + displayMask.height],
@@ -168,28 +169,30 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     if (!loaded) return;
     const maskOnThisPage = mask && (mask.page === selectedPage || !isPdf);
     if (!maskOnThisPage || !mask || mask.width < 2) { drawOverlay(null); return; }
-    drawOverlay(scaleToDisplay(mask));
+    drawOverlay(scaleToDisplay(mask), mask.autoDetect);
   }, [mask, loaded, selectedPage, drawOverlay]);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (autoDetect) return;
     setStartPos(getRelPos(e));
     setDrawing(true);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!drawing) return;
+    if (!drawing || autoDetect) return;
     const pos = getRelPos(e);
     drawOverlay({ x: Math.min(pos.x, startPos.x), y: Math.min(pos.y, startPos.y), width: Math.abs(pos.x - startPos.x), height: Math.abs(pos.y - startPos.y) });
   };
 
   const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!drawing) return;
+    if (!drawing || autoDetect) return;
     setDrawing(false);
     const pos = getRelPos(e);
     const displayMask: MaskRect = { x: Math.min(pos.x, startPos.x), y: Math.min(pos.y, startPos.y), width: Math.abs(pos.x - startPos.x), height: Math.abs(pos.y - startPos.y) };
     if (displayMask.width > 5 && displayMask.height > 5) {
       const natural = scaleToNatural(displayMask);
-      onMaskChange({ ...natural, anchorText: mask?.anchorText });
+      const thumb = canvasRef.current ? captureStructuralThumbnail(canvasRef.current) : undefined;
+      onMaskChange({ ...natural, anchorText: mask?.anchorText, pageThumbnail: thumb, autoDetect: false });
     }
   };
 
@@ -197,11 +200,23 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     const c = canvasRef.current;
     if (!c) return;
     const detected = autoDetectSignature(c);
-    onMaskChange({ ...detected, page: selectedPage, anchorText: mask?.anchorText });
+    const thumb = captureStructuralThumbnail(c);
+    onMaskChange({ ...detected, page: selectedPage, anchorText: mask?.anchorText, pageThumbnail: thumb, autoDetect: false });
+  };
+
+  const handleToggleAutoDetect = () => {
+    const c = canvasRef.current;
+    const newVal = !autoDetect;
+    if (newVal && c) {
+      const thumb = captureStructuralThumbnail(c);
+      onMaskChange({ x: 0, y: 0, width: c.width, height: c.height, page: selectedPage, anchorText: mask?.anchorText, pageThumbnail: thumb, autoDetect: true });
+    } else {
+      onMaskChange({ x: 0, y: 0, width: 0, height: 0, page: selectedPage, anchorText: mask?.anchorText, pageThumbnail: mask?.pageThumbnail, autoDetect: false });
+    }
   };
 
   const handleReset = () => {
-    onMaskChange({ x: 0, y: 0, width: 0, height: 0, page: selectedPage, anchorText: mask?.anchorText });
+    onMaskChange({ x: 0, y: 0, width: 0, height: 0, page: selectedPage, anchorText: mask?.anchorText, autoDetect: false });
     drawOverlay(null);
   };
 
@@ -210,18 +225,55 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={handleAutoDetect} disabled={!loaded}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium rounded-lg transition-colors">
-          <Wand2 size={13} /> Auto-Detect
-        </button>
+        {!autoDetect && (
+          <button onClick={handleAutoDetect} disabled={!loaded}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium rounded-lg transition-colors">
+            <Wand2 size={13} /> Auto-Detect
+          </button>
+        )}
         <button onClick={handleReset} disabled={!loaded}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 text-xs font-medium rounded-lg transition-colors">
           <RotateCcw size={13} /> Reset
         </button>
-        <div className="flex items-center gap-1.5 text-slate-400 text-xs ml-auto">
-          <Move size={12} /> <span>Draw to select region</span>
-        </div>
+
+        <label className="flex items-center gap-2 ml-auto cursor-pointer select-none">
+          <div
+            onClick={handleToggleAutoDetect}
+            className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 cursor-pointer ${
+              autoDetect ? 'bg-emerald-500' : 'bg-slate-600'
+            }`}
+          >
+            <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+              autoDetect ? 'translate-x-4' : 'translate-x-0.5'
+            }`} />
+          </div>
+          <div className="flex items-center gap-1 text-xs">
+            <Scan size={12} className={autoDetect ? 'text-emerald-400' : 'text-slate-500'} />
+            <span className={autoDetect ? 'text-emerald-300 font-semibold' : 'text-slate-400'}>
+              Auto-detect signature
+            </span>
+          </div>
+        </label>
       </div>
+
+      {autoDetect && (
+        <div className="flex items-start gap-2 text-xs bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2.5 text-emerald-300">
+          <Scan size={13} className="shrink-0 mt-0.5" />
+          <div>
+            <span className="font-semibold">Auto-detect enabled</span>
+            <span className="text-emerald-400/70 ml-1">— the entire page will be scanned to find and extract the signature automatically. No need to draw a region.</span>
+            {mask?.pageThumbnail && (
+              <span className="block mt-1 text-emerald-400/60">Page fingerprint captured for reliable page matching.</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!autoDetect && (
+        <div className="flex items-center gap-1.5 text-slate-400 text-xs">
+          <Move size={12} /> <span>Draw to select region manually</span>
+        </div>
+      )}
 
       {isPdf && pageCount > 1 && (
         <div className="space-y-2">
@@ -252,13 +304,16 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
             {Array.from({ length: pageCount }, (_, i) => i + 1).map(pageNum => {
               const isSelected = pageNum === selectedPage;
               const hasMask = mask?.page === pageNum && (mask?.width ?? 0) > 2;
+              const isAutoPage = mask?.page === pageNum && mask?.autoDetect;
               return (
                 <button
                   key={pageNum}
                   data-page={pageNum}
                   onClick={() => handlePageSelect(pageNum)}
                   className={`shrink-0 relative rounded-lg overflow-hidden border-2 transition-all ${
-                    isSelected ? 'border-blue-500 shadow-lg shadow-blue-500/30' : 'border-slate-600 hover:border-slate-400'
+                    isSelected
+                      ? isAutoPage ? 'border-emerald-500 shadow-lg shadow-emerald-500/30' : 'border-blue-500 shadow-lg shadow-blue-500/30'
+                      : 'border-slate-600 hover:border-slate-400'
                   }`}
                   style={{ width: 80 }}
                 >
@@ -270,12 +325,14 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
                     </div>
                   )}
                   <div className={`absolute bottom-0 left-0 right-0 text-center py-0.5 text-xs font-medium ${
-                    isSelected ? 'bg-blue-600 text-white' : 'bg-slate-900/80 text-slate-300'
+                    isSelected
+                      ? isAutoPage ? 'bg-emerald-600 text-white' : 'bg-blue-600 text-white'
+                      : 'bg-slate-900/80 text-slate-300'
                   }`}>
                     {pageNum}
                   </div>
-                  {hasMask && (
-                    <div className="absolute top-1 right-1 w-2 h-2 bg-emerald-400 rounded-full shadow-sm" />
+                  {(hasMask || isAutoPage) && (
+                    <div className={`absolute top-1 right-1 w-2 h-2 rounded-full shadow-sm ${isAutoPage ? 'bg-emerald-400' : 'bg-emerald-400'}`} />
                   )}
                 </button>
               );
@@ -294,21 +351,26 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
           <div className="flex items-center gap-2">
             <ScanText size={14} className="text-teal-400 shrink-0" />
             <p className="text-slate-300 text-xs font-semibold">Smart Page Detection</p>
+            {mask?.pageThumbnail && (
+              <span className="ml-auto text-xs text-emerald-400 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /> Page fingerprint saved
+              </span>
+            )}
           </div>
           <p className="text-slate-500 text-xs leading-relaxed">
-            Enter text that appears near the signature on the page (e.g. "Authorized Signatory", "Client Signature"). The correct page will be found automatically, regardless of document ordering.
+            A page fingerprint is captured automatically when you draw a region. Optionally add anchor text as a fallback for extra reliability.
           </p>
           <input
             type="text"
             value={mask?.anchorText ?? ''}
             onChange={e => onMaskChange({ ...(mask ?? { x: 0, y: 0, width: 0, height: 0 }), anchorText: e.target.value })}
-            placeholder="e.g. Authorized Signatory"
+            placeholder="e.g. Authorized Signatory (optional)"
             className="w-full bg-slate-900 border border-slate-600 focus:border-teal-500 outline-none rounded-lg px-3 py-2 text-white text-sm placeholder:text-slate-500 transition-colors"
           />
           {mask?.anchorText && (
             <p className="text-teal-400 text-xs flex items-center gap-1">
               <span className="w-1.5 h-1.5 bg-teal-400 rounded-full" />
-              Will auto-find page containing &ldquo;{mask.anchorText}&rdquo;
+              Will also search for &ldquo;{mask.anchorText}&rdquo; as a fallback
             </p>
           )}
         </div>
@@ -337,18 +399,26 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
               ref={overlayRef}
               width={displaySize.w}
               height={displaySize.h}
-              className="absolute inset-0 cursor-crosshair"
+              className={`absolute inset-0 ${autoDetect ? 'cursor-not-allowed' : 'cursor-crosshair'}`}
               style={{ width: displaySize.w, height: displaySize.h }}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
             />
+            {autoDetect && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="bg-emerald-500/20 border border-emerald-500/40 rounded-xl px-4 py-2 flex items-center gap-2">
+                  <Scan size={14} className="text-emerald-400" />
+                  <span className="text-emerald-300 text-xs font-semibold">Full page will be scanned automatically</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {maskOnThisPage && mask && mask.width > 0 && (
+      {!autoDetect && maskOnThisPage && mask && mask.width > 0 && (
         <div className="grid grid-cols-4 gap-2">
           {[{ label: 'X', value: mask.x }, { label: 'Y', value: mask.y }, { label: 'W', value: mask.width }, { label: 'H', value: mask.height }].map(({ label, value }) => (
             <div key={label} className="bg-slate-800 rounded-lg p-2 text-center border border-slate-700">
@@ -359,7 +429,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
         </div>
       )}
 
-      {isPdf && !maskOnThisPage && mask && mask.width > 0 && (
+      {!autoDetect && isPdf && !maskOnThisPage && mask && mask.width > 0 && (
         <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
           <span>Region defined on page {mask.page}. Switch to that page to see it, or draw a new one on this page.</span>
         </div>

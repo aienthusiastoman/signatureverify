@@ -20,7 +20,8 @@ import HistoryPage from './pages/HistoryPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { useSignatureProcess } from './hooks/useSignatureProcess';
-import { extractRegion, renderPdfPageToCanvas, findPageByAnchorText } from './lib/imageUtils';
+import { extractRegion, renderPdfPageToCanvas, findPageByAnchorText, findPageByThumbnail } from './lib/imageUtils';
+import { detectSignatureInRegionFiltered } from './lib/signatureDetect';
 import type { UploadedFile, MaskRect, SignatureRegion, AppStep, AppView } from './types';
 
 async function renderPageCanvas(file: UploadedFile, page: number): Promise<HTMLCanvasElement> {
@@ -76,33 +77,48 @@ function CompareToolContent() {
 
   const handleProceedToMask = () => { if (file1 && file2) setStep('mask'); };
 
+  const resolvePageForMask = async (file: UploadedFile, mask: MaskRect): Promise<{ mask: MaskRect; warning?: string }> => {
+    if (file.type !== 'pdf') return { mask };
+
+    let foundPage: number | null = null;
+
+    if (mask.pageThumbnail) {
+      foundPage = await findPageByThumbnail(file.file, mask.pageThumbnail);
+    }
+
+    if (foundPage === null && mask.anchorText?.trim()) {
+      const textFound = await findPageByAnchorText(file.file, mask.anchorText, mask);
+      if (textFound !== null) {
+        foundPage = textFound;
+      } else {
+        return { mask, warning: `Could not locate "${mask.anchorText}" in ${file.file.name}. Using page ${mask.page ?? 1}.` };
+      }
+    }
+
+    if (foundPage !== null) {
+      return { mask: { ...mask, page: foundPage } };
+    }
+
+    return { mask };
+  };
+
   const handleProceedToPreview = async () => {
     if (!file1 || !file2 || !mask1 || !mask2) return;
     setExtracting(true);
     setAnchorWarning(null);
     try {
-      let resolvedMask1 = mask1;
-      let resolvedMask2 = mask2;
+      const [r1, r2] = await Promise.all([
+        resolvePageForMask(file1, mask1),
+        resolvePageForMask(file2, mask2),
+      ]);
 
-      if (mask1.anchorText?.trim() && file1.type === 'pdf') {
-        const found = await findPageByAnchorText(file1.file, mask1.anchorText, mask1);
-        if (found !== null) {
-          resolvedMask1 = { ...mask1, page: found };
-          setMask1(resolvedMask1);
-        } else {
-          setAnchorWarning(`Could not find "${mask1.anchorText}" in Document 1. Using page ${mask1.page ?? 1}.`);
-        }
-      }
+      const warn = r1.warning ?? r2.warning ?? null;
+      if (warn) setAnchorWarning(warn);
 
-      if (mask2.anchorText?.trim() && file2.type === 'pdf') {
-        const found = await findPageByAnchorText(file2.file, mask2.anchorText, mask2);
-        if (found !== null) {
-          resolvedMask2 = { ...mask2, page: found };
-          setMask2(resolvedMask2);
-        } else {
-          setAnchorWarning(`Could not find "${mask2.anchorText}" in Document 2. Using page ${mask2.page ?? 1}.`);
-        }
-      }
+      let resolvedMask1 = r1.mask;
+      let resolvedMask2 = r2.mask;
+      setMask1(resolvedMask1);
+      setMask2(resolvedMask2);
 
       const page1 = resolvedMask1.page ?? 1;
       const page2 = resolvedMask2.page ?? 1;
@@ -110,6 +126,16 @@ function CompareToolContent() {
       const c2 = await renderPageCanvas(file2, page2);
       canvas1Ref.current = c1;
       canvas2Ref.current = c2;
+
+      if (resolvedMask1.autoDetect) {
+        const detected = detectSignatureInRegionFiltered(c1, resolvedMask1);
+        resolvedMask1 = { ...resolvedMask1, ...detected };
+      }
+      if (resolvedMask2.autoDetect) {
+        const detected = detectSignatureInRegionFiltered(c2, resolvedMask2);
+        resolvedMask2 = { ...resolvedMask2, ...detected };
+      }
+
       const crop1 = extractRegion(c1, resolvedMask1);
       const crop2 = extractRegion(c2, resolvedMask2);
       setRegion1({ dataUrl: crop1.toDataURL('image/png'), mask: resolvedMask1, naturalWidth: c1.width, naturalHeight: c1.height });
@@ -128,7 +154,8 @@ function CompareToolContent() {
   const handleReset = () => { clearFile1(); clearFile2(); setStep('upload'); setAnchorWarning(null); };
 
   const canProceedToMask = !!file1 && !!file2;
-  const canProceedToPreview = !!mask1 && mask1.width > 5 && !!mask2 && mask2.width > 5;
+  const maskReady = (m: MaskRect | null) => !!m && (m.autoDetect === true || m.width > 5);
+  const canProceedToPreview = maskReady(mask1) && maskReady(mask2);
 
   return (
     <div className="space-y-6">

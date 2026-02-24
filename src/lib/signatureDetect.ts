@@ -49,6 +49,78 @@ export function autoDetectSignature(canvas: HTMLCanvasElement): MaskRect {
   return { x, y, width: w, height: h };
 }
 
+export function detectSignatureInRegionFiltered(
+  canvas: HTMLCanvasElement,
+  searchRegion?: Partial<MaskRect>
+): MaskRect {
+  const { width, height } = canvas;
+  const rx = Math.max(0, searchRegion?.x ?? 0);
+  const ry = Math.max(0, searchRegion?.y ?? 0);
+  const rw = Math.min(width - rx, searchRegion?.width ?? width);
+  const rh = Math.min(height - ry, searchRegion?.height ?? height);
+
+  const ctx = canvas.getContext('2d')!;
+  const imgData = ctx.getImageData(rx, ry, rw, rh);
+  const d = imgData.data;
+  const sw = imgData.width;
+  const sh = imgData.height;
+
+  const dark = new Uint8Array(sw * sh);
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      const i = (y * sw + x) * 4;
+      dark[y * sw + x] = (d[i] + d[i + 1] + d[i + 2]) / 3 < 150 ? 1 : 0;
+    }
+  }
+
+  const H_LINE = sw * 0.5;
+  for (let y = 0; y < sh; y++) {
+    let run = 0, maxRun = 0;
+    for (let x = 0; x < sw; x++) {
+      run = dark[y * sw + x] ? run + 1 : 0;
+      if (run > maxRun) maxRun = run;
+    }
+    if (maxRun >= H_LINE) {
+      for (let x = 0; x < sw; x++) dark[y * sw + x] = 0;
+    }
+  }
+
+  const V_LINE = sh * 0.5;
+  for (let x = 0; x < sw; x++) {
+    let run = 0, maxRun = 0;
+    for (let y = 0; y < sh; y++) {
+      run = dark[y * sw + x] ? run + 1 : 0;
+      if (run > maxRun) maxRun = run;
+    }
+    if (maxRun >= V_LINE) {
+      for (let y = 0; y < sh; y++) dark[y * sw + x] = 0;
+    }
+  }
+
+  let minX = sw, minY = sh, maxX = 0, maxY = 0;
+  let found = false;
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      if (dark[y * sw + x]) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        found = true;
+      }
+    }
+  }
+
+  if (!found) return { x: rx, y: ry, width: sw, height: sh };
+
+  const PAD = 20;
+  const absX = Math.max(0, rx + minX - PAD);
+  const absY = Math.max(0, ry + minY - PAD);
+  const absW = Math.min(width - absX, maxX - minX + PAD * 2 + PAD);
+  const absH = Math.min(height - absY, maxY - minY + PAD * 2 + PAD);
+  return { x: absX, y: absY, width: Math.max(10, absW), height: Math.max(10, absH) };
+}
+
 export function detectSignatureInRegion(
   canvas: HTMLCanvasElement,
   searchRegion?: Partial<MaskRect>
