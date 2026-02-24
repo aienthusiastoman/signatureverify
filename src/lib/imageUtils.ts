@@ -110,28 +110,29 @@ export async function findPageByAnchorText(
     return canvas;
   };
 
+  const pickBestByInk = async (pages: number[]): Promise<number> => {
+    const SIGNATURE_MIN = 0.008;
+    const SIGNATURE_MAX = 0.12;
+    const entries: { page: number; ratio: number }[] = [];
+    for (const p of pages) {
+      const canvas = await renderPage(p);
+      entries.push({ page: p, ratio: getRegionInkRatio(canvas, mask!) });
+    }
+    const inRange = entries.filter(e => e.ratio >= SIGNATURE_MIN && e.ratio <= SIGNATURE_MAX);
+    const pool = inRange.length > 0 ? inRange : entries.filter(e => e.ratio >= SIGNATURE_MIN);
+    if (pool.length === 0) return pages[0];
+    return pool.reduce((a, b) => a.ratio > b.ratio ? a : b).page;
+  };
+
   if (matchingPages.length === 0) {
     if (!mask) return null;
-    let bestPage = -1;
-    let bestRatio = 0.008;
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const canvas = await renderPage(i);
-      const ratio = getRegionInkRatio(canvas, mask);
-      if (ratio > bestRatio) { bestRatio = ratio; bestPage = i; }
-    }
-    return bestPage >= 1 ? bestPage : null;
+    const allPages = Array.from({ length: pdf.numPages }, (_, i) => i + 1);
+    return pickBestByInk(allPages);
   }
 
   if (matchingPages.length === 1 || !mask) return matchingPages[0];
 
-  let bestPage = matchingPages[0];
-  let bestRatio = 0;
-  for (const pageNum of matchingPages) {
-    const canvas = await renderPage(pageNum);
-    const ratio = getRegionInkRatio(canvas, mask);
-    if (ratio > bestRatio) { bestRatio = ratio; bestPage = pageNum; }
-  }
-  return bestPage;
+  return pickBestByInk(matchingPages);
 }
 
 export async function fileToCanvas(file: File): Promise<HTMLCanvasElement> {
