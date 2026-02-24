@@ -64,6 +64,31 @@ function getRegionInkRatio(
   return dark / (w * h);
 }
 
+function countInkBands(
+  canvas: HTMLCanvasElement,
+  mask: { x: number; y: number; width: number; height: number },
+  sliceHeight = 12
+): number {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return 1;
+  const x = Math.max(0, Math.round(mask.x));
+  const y = Math.max(0, Math.round(mask.y));
+  const w = Math.min(canvas.width - x, Math.max(1, Math.round(mask.width)));
+  const h = Math.min(canvas.height - y, Math.max(1, Math.round(mask.height)));
+  let bands = 0;
+  for (let sy = 0; sy < h; sy += sliceHeight) {
+    const sh = Math.min(sliceHeight, h - sy);
+    if (sh <= 0) break;
+    const data = ctx.getImageData(x, y + sy, w, sh).data;
+    let dark = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if ((data[i] + data[i + 1] + data[i + 2]) / 3 < 180) dark++;
+    }
+    if (dark / (w * sh) >= 0.005) bands++;
+  }
+  return Math.max(1, bands);
+}
+
 function regionHasInkContent(
   canvas: HTMLCanvasElement,
   mask: { x: number; y: number; width: number; height: number },
@@ -111,14 +136,17 @@ export async function findPageByAnchorText(
   };
 
   const pickBestByInk = async (pages: number[]): Promise<number> => {
-    const SIGNATURE_MIN = 0.005;
+    const SIGNATURE_MIN = 0.004;
     const entries: { page: number; maskRatio: number; score: number }[] = [];
     for (const p of pages) {
       const canvas = await renderPage(p);
       const maskRatio = getRegionInkRatio(canvas, mask!);
       const fullPage = { x: 0, y: 0, width: canvas.width, height: canvas.height };
       const pageRatio = getRegionInkRatio(canvas, fullPage);
-      const score = maskRatio >= SIGNATURE_MIN ? maskRatio / (pageRatio + 0.01) : 0;
+      const bands = countInkBands(canvas, mask!);
+      // Reward: concentrated mask ink (high maskRatio)
+      // Penalise: dense pages (high pageRatio) and ink spread across many bands (high bands)
+      const score = maskRatio >= SIGNATURE_MIN ? maskRatio / (pageRatio * bands + 0.01) : 0;
       entries.push({ page: p, maskRatio, score });
     }
     const candidates = entries.filter(e => e.maskRatio >= SIGNATURE_MIN && e.score > 0);

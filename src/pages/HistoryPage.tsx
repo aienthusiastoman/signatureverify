@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { History, FileText, Trash2, ExternalLink, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { History, FileText, Trash2, ExternalLink, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, Search, CheckSquare, Square, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import type { VerificationJob } from '../types';
@@ -38,14 +38,19 @@ export default function HistoryPage() {
   const [jobs, setJobs] = useState<VerificationJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
+    setSelectedIds(new Set());
     try {
       let query = supabase
         .from('verification_jobs')
@@ -69,25 +74,76 @@ export default function HistoryPage() {
 
   useEffect(() => { fetchJobs(); }, [fetchJobs]);
 
+  const deleteJobById = async (job: VerificationJob): Promise<boolean> => {
+    if (job.result_path) {
+      await supabase.storage.from('signature-results').remove([job.result_path]);
+    }
+    const { error } = await supabase.from('verification_jobs').delete().eq('id', job.id);
+    return !error;
+  };
+
   const handleDelete = async (job: VerificationJob) => {
     setDeleting(job.id);
+    setErrorMsg(null);
     try {
-      if (job.result_path) {
-        await supabase.storage.from('signature-results').remove([job.result_path]);
+      const ok = await deleteJobById(job);
+      if (ok) {
+        setJobs(prev => prev.filter(j => j.id !== job.id));
+        setTotalCount(prev => prev - 1);
+        setSelectedIds(prev => { const n = new Set(prev); n.delete(job.id); return n; });
+      } else {
+        setErrorMsg('Failed to delete record. Please try again.');
       }
-      await supabase.from('verification_jobs').delete().eq('id', job.id);
-      setJobs(prev => prev.filter(j => j.id !== job.id));
-      setTotalCount(prev => prev - 1);
     } finally {
       setDeleting(null);
       setConfirmDelete(null);
     }
   };
 
+  const handleBulkDelete = async () => {
+    setBulkDeleting(true);
+    setErrorMsg(null);
+    const toDelete = jobs.filter(j => selectedIds.has(j.id));
+    const resultPaths = toDelete.map(j => j.result_path).filter(Boolean) as string[];
+    if (resultPaths.length > 0) {
+      await supabase.storage.from('signature-results').remove(resultPaths);
+    }
+    const ids = toDelete.map(j => j.id);
+    const { error } = await supabase.from('verification_jobs').delete().in('id', ids);
+    if (!error) {
+      setJobs(prev => prev.filter(j => !selectedIds.has(j.id)));
+      setTotalCount(prev => prev - ids.length);
+      setSelectedIds(new Set());
+    } else {
+      setErrorMsg('Bulk delete failed. Please try again.');
+    }
+    setBulkDeleting(false);
+    setConfirmBulk(false);
+  };
+
   const openResult = (job: VerificationJob) => {
     if (!job.result_path) return;
     const { data } = supabase.storage.from('signature-results').getPublicUrl(job.result_path);
     window.open(data.publicUrl, '_blank');
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+
+  const allSelected = jobs.length > 0 && jobs.every(j => selectedIds.has(j.id));
+  const someSelected = selectedIds.size > 0;
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(jobs.map(j => j.id)));
+    }
   };
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
@@ -111,14 +167,26 @@ export default function HistoryPage() {
             </p>
           </div>
         </div>
-        <button
-          onClick={fetchJobs}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors"
-          style={{ color: theme.fontColor, opacity: 0.6, backgroundColor: 'rgba(255,255,255,0.05)' }}
-        >
-          <RefreshCw size={13} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {someSelected && (
+            <button
+              onClick={() => setConfirmBulk(true)}
+              disabled={bulkDeleting}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/20 disabled:opacity-50"
+            >
+              {bulkDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+              Delete {selectedIds.size} selected
+            </button>
+          )}
+          <button
+            onClick={fetchJobs}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors"
+            style={{ color: theme.fontColor, opacity: 0.6, backgroundColor: 'rgba(255,255,255,0.05)' }}
+          >
+            <RefreshCw size={13} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="relative">
@@ -142,9 +210,16 @@ export default function HistoryPage() {
         style={{ border: '1px solid rgba(255,255,255,0.08)', backgroundColor: theme.surfaceColor }}
       >
         <div
-          className="grid grid-cols-[1fr_1fr_100px_90px_100px_90px] gap-4 px-5 py-3 border-b text-xs font-bold uppercase tracking-wider"
-          style={{ borderBottomColor: 'rgba(255,255,255,0.07)', color: theme.fontColor, opacity: 1 }}
+          className="grid grid-cols-[40px_1fr_1fr_100px_90px_100px_80px] gap-4 px-5 py-3 border-b text-xs font-bold uppercase tracking-wider"
+          style={{ borderBottomColor: 'rgba(255,255,255,0.07)', color: theme.fontColor }}
         >
+          <div className="flex items-center">
+            <button onClick={toggleSelectAll} className="opacity-50 hover:opacity-100 transition-opacity">
+              {allSelected
+                ? <CheckSquare size={14} style={{ color: theme.themeColor }} />
+                : <Square size={14} style={{ color: theme.fontColor }} />}
+            </button>
+          </div>
           <span style={{ opacity: 0.4 }}>Document 1</span>
           <span style={{ opacity: 0.4 }}>Document 2</span>
           <span style={{ opacity: 0.4 }}>Score</span>
@@ -173,86 +248,96 @@ export default function HistoryPage() {
           </div>
         ) : (
           <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-            {jobs.map(job => (
-              <div
-                key={job.id}
-                className="grid grid-cols-[1fr_1fr_100px_90px_100px_90px] gap-4 px-5 py-4 items-center hover:bg-white/[0.03] transition-colors"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <FileText size={13} style={{ color: theme.fontColor, opacity: 0.35, flexShrink: 0 }} />
-                    <span className="text-sm truncate font-medium" style={{ color: theme.fontColor }}>
-                      {job.file1_name}
-                    </span>
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <FileText size={13} style={{ color: theme.fontColor, opacity: 0.35, flexShrink: 0 }} />
-                    <span className="text-sm truncate font-medium" style={{ color: theme.fontColor }}>
-                      {job.file2_name}
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <ScoreBadge score={job.confidence_score} />
-                </div>
-                <div>
-                  <StatusBadge status={job.status} />
-                </div>
-                <div>
-                  <span className="text-xs" style={{ color: theme.fontColor, opacity: 0.45 }}>
-                    {new Date(job.created_at).toLocaleDateString('en-US', {
-                      month: 'short', day: 'numeric', year: 'numeric',
-                    })}
-                  </span>
-                  <p className="text-xs mt-0.5" style={{ color: theme.fontColor, opacity: 0.3 }}>
-                    {new Date(job.created_at).toLocaleTimeString('en-US', {
-                      hour: '2-digit', minute: '2-digit',
-                    })}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {job.result_path && (
+            {jobs.map(job => {
+              const isSelected = selectedIds.has(job.id);
+              return (
+                <div
+                  key={job.id}
+                  className="grid grid-cols-[40px_1fr_1fr_100px_90px_100px_80px] gap-4 px-5 py-4 items-center hover:bg-white/[0.03] transition-colors"
+                  style={isSelected ? { backgroundColor: theme.themeColor + '10' } : {}}
+                >
+                  <div className="flex items-center">
                     <button
-                      onClick={() => openResult(job)}
-                      className="p-1.5 rounded-lg transition-colors hover:bg-white/10"
-                      title="View report"
-                      style={{ color: theme.themeColor }}
+                      onClick={() => toggleSelect(job.id)}
+                      className="opacity-50 hover:opacity-100 transition-opacity"
                     >
-                      <ExternalLink size={14} />
+                      {isSelected
+                        ? <CheckSquare size={14} style={{ color: theme.themeColor }} />
+                        : <Square size={14} style={{ color: theme.fontColor }} />}
                     </button>
-                  )}
-                  {confirmDelete === job.id ? (
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleDelete(job)}
-                        disabled={deleting === job.id}
-                        className="px-2 py-1 rounded-md text-xs font-semibold bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
-                      >
-                        {deleting === job.id ? <Loader2 size={10} className="animate-spin" /> : 'Yes'}
-                      </button>
-                      <button
-                        onClick={() => setConfirmDelete(null)}
-                        className="px-2 py-1 rounded-md text-xs font-semibold transition-colors"
-                        style={{ backgroundColor: 'rgba(255,255,255,0.07)', color: theme.fontColor }}
-                      >
-                        No
-                      </button>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <FileText size={13} style={{ color: theme.fontColor, opacity: 0.35, flexShrink: 0 }} />
+                      <span className="text-sm truncate font-medium" style={{ color: theme.fontColor }}>
+                        {job.file1_name}
+                      </span>
                     </div>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmDelete(job.id)}
-                      className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10"
-                      title="Delete record"
-                      style={{ color: theme.fontColor, opacity: 0.4 }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <FileText size={13} style={{ color: theme.fontColor, opacity: 0.35, flexShrink: 0 }} />
+                      <span className="text-sm truncate font-medium" style={{ color: theme.fontColor }}>
+                        {job.file2_name}
+                      </span>
+                    </div>
+                  </div>
+                  <div><ScoreBadge score={job.confidence_score} /></div>
+                  <div><StatusBadge status={job.status} /></div>
+                  <div>
+                    <span className="text-xs" style={{ color: theme.fontColor, opacity: 0.45 }}>
+                      {new Date(job.created_at).toLocaleDateString('en-US', {
+                        month: 'short', day: 'numeric', year: 'numeric',
+                      })}
+                    </span>
+                    <p className="text-xs mt-0.5" style={{ color: theme.fontColor, opacity: 0.3 }}>
+                      {new Date(job.created_at).toLocaleTimeString('en-US', {
+                        hour: '2-digit', minute: '2-digit',
+                      })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {job.result_path && (
+                      <button
+                        onClick={() => openResult(job)}
+                        className="p-1.5 rounded-lg transition-colors hover:bg-white/10"
+                        title="View report"
+                        style={{ color: theme.themeColor }}
+                      >
+                        <ExternalLink size={14} />
+                      </button>
+                    )}
+                    {confirmDelete === job.id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleDelete(job)}
+                          disabled={deleting === job.id}
+                          className="px-2 py-1 rounded-md text-xs font-semibold bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                        >
+                          {deleting === job.id ? <Loader2 size={10} className="animate-spin" /> : 'Yes'}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(null)}
+                          className="p-1 rounded-md transition-colors hover:bg-white/10"
+                          style={{ color: theme.fontColor, opacity: 0.5 }}
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDelete(job.id)}
+                        className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10"
+                        title="Delete record"
+                        style={{ color: theme.fontColor, opacity: 0.4 }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -283,7 +368,47 @@ export default function HistoryPage() {
         </div>
       )}
 
-      {confirmDelete && (
+      {confirmBulk && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div
+            className="rounded-2xl p-6 shadow-2xl border max-w-sm w-full mx-4 space-y-4"
+            style={{ backgroundColor: theme.surfaceColor, borderColor: 'rgba(248,113,113,0.3)' }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
+                <Trash2 size={18} className="text-red-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm" style={{ color: theme.fontColor }}>
+                  Delete {selectedIds.size} record{selectedIds.size !== 1 ? 's' : ''}?
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: theme.fontColor, opacity: 0.45 }}>
+                  This will also remove the stored report PDFs. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setConfirmBulk(false)}
+                className="px-4 py-2 rounded-lg text-xs font-semibold transition-colors"
+                style={{ backgroundColor: 'rgba(255,255,255,0.07)', color: theme.fontColor }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="px-4 py-2 rounded-lg text-xs font-semibold transition-colors bg-red-500/20 hover:bg-red-500/30 text-red-400 disabled:opacity-50 flex items-center gap-2"
+              >
+                {bulkDeleting && <Loader2 size={12} className="animate-spin" />}
+                Delete all
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {errorMsg && (
         <div
           className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border text-sm z-50"
           style={{
@@ -293,7 +418,10 @@ export default function HistoryPage() {
           }}
         >
           <AlertCircle size={15} className="text-red-400 shrink-0" />
-          This will also delete the stored report PDF.
+          {errorMsg}
+          <button onClick={() => setErrorMsg(null)} className="ml-2 opacity-50 hover:opacity-100">
+            <X size={13} />
+          </button>
         </div>
       )}
     </div>
