@@ -111,17 +111,19 @@ export async function findPageByAnchorText(
   };
 
   const pickBestByInk = async (pages: number[]): Promise<number> => {
-    const SIGNATURE_MIN = 0.008;
-    const SIGNATURE_MAX = 0.12;
-    const entries: { page: number; ratio: number }[] = [];
+    const SIGNATURE_MIN = 0.005;
+    const entries: { page: number; maskRatio: number; score: number }[] = [];
     for (const p of pages) {
       const canvas = await renderPage(p);
-      entries.push({ page: p, ratio: getRegionInkRatio(canvas, mask!) });
+      const maskRatio = getRegionInkRatio(canvas, mask!);
+      const fullPage = { x: 0, y: 0, width: canvas.width, height: canvas.height };
+      const pageRatio = getRegionInkRatio(canvas, fullPage);
+      const score = maskRatio >= SIGNATURE_MIN ? maskRatio / (pageRatio + 0.01) : 0;
+      entries.push({ page: p, maskRatio, score });
     }
-    const inRange = entries.filter(e => e.ratio >= SIGNATURE_MIN && e.ratio <= SIGNATURE_MAX);
-    const pool = inRange.length > 0 ? inRange : entries.filter(e => e.ratio >= SIGNATURE_MIN);
-    if (pool.length === 0) return pages[0];
-    return pool.reduce((a, b) => a.ratio > b.ratio ? a : b).page;
+    const candidates = entries.filter(e => e.maskRatio >= SIGNATURE_MIN && e.score > 0);
+    if (candidates.length === 0) return pages[0];
+    return candidates.reduce((a, b) => a.score > b.score ? a : b).page;
   };
 
   if (matchingPages.length === 0) {
