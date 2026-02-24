@@ -45,24 +45,31 @@ export async function renderPdfToCanvas(file: File): Promise<HTMLCanvasElement> 
   return renderPdfPageToCanvas(file, 1);
 }
 
-function regionHasInkContent(
+function getRegionInkRatio(
   canvas: HTMLCanvasElement,
-  mask: { x: number; y: number; width: number; height: number },
-  minDarkRatio = 0.002
-): boolean {
+  mask: { x: number; y: number; width: number; height: number }
+): number {
   const ctx = canvas.getContext('2d');
-  if (!ctx) return false;
+  if (!ctx) return 0;
   const x = Math.max(0, Math.round(mask.x));
   const y = Math.max(0, Math.round(mask.y));
   const w = Math.min(canvas.width - x, Math.max(1, Math.round(mask.width)));
   const h = Math.min(canvas.height - y, Math.max(1, Math.round(mask.height)));
-  if (w <= 0 || h <= 0) return false;
+  if (w <= 0 || h <= 0) return 0;
   const data = ctx.getImageData(x, y, w, h).data;
   let dark = 0;
   for (let i = 0; i < data.length; i += 4) {
     if ((data[i] + data[i + 1] + data[i + 2]) / 3 < 180) dark++;
   }
-  return dark / (w * h) >= minDarkRatio;
+  return dark / (w * h);
+}
+
+function regionHasInkContent(
+  canvas: HTMLCanvasElement,
+  mask: { x: number; y: number; width: number; height: number },
+  minDarkRatio = 0.002
+): boolean {
+  return getRegionInkRatio(canvas, mask) >= minDarkRatio;
 }
 
 export async function findPageByAnchorText(
@@ -78,7 +85,7 @@ export async function findPageByAnchorText(
 
   const words = search.split(' ').filter(w => w.length > 0);
   const escapedWords = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  const loosePattern = new RegExp(escapedWords.join('[\\s\\S]{0,5}'));
+  const loosePattern = new RegExp(escapedWords.join('[\\s\\S]{0,80}'));
 
   const matchingPages: number[] = [];
   for (let i = 1; i <= pdf.numPages; i++) {
@@ -87,27 +94,44 @@ export async function findPageByAnchorText(
     const items = (textContent.items as any[]).map((item: any) => item.str);
     const pageText = items.join(' ').toLowerCase().replace(/\s+/g, ' ');
     const pageTextNoSpaces = items.join(' ').toLowerCase().replace(/\s+/g, '');
-    if (
-      pageText.includes(search) ||
-      pageTextNoSpaces.includes(searchNoSpaces) ||
-      loosePattern.test(pageText)
-    ) matchingPages.push(i);
+    const hasExact = pageText.includes(search) || pageTextNoSpaces.includes(searchNoSpaces);
+    const hasLoose = loosePattern.test(pageText);
+    const hasAllWords = words.length >= 3 && words.filter(w => w.length > 2).every(w => pageText.includes(w));
+    if (hasExact || hasLoose || hasAllWords) matchingPages.push(i);
   }
 
-  if (matchingPages.length === 0) return null;
-  if (matchingPages.length === 1 || !mask) return matchingPages[0];
-
-  for (const pageNum of matchingPages) {
+  const renderPage = async (pageNum: number): Promise<HTMLCanvasElement> => {
     const page = await pdf.getPage(pageNum);
     const viewport = page.getViewport({ scale: 2.0 });
     const canvas = document.createElement('canvas');
     canvas.width = viewport.width;
     canvas.height = viewport.height;
     await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
-    if (regionHasInkContent(canvas, mask)) return pageNum;
+    return canvas;
+  };
+
+  if (matchingPages.length === 0) {
+    if (!mask) return null;
+    let bestPage = -1;
+    let bestRatio = 0.008;
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const canvas = await renderPage(i);
+      const ratio = getRegionInkRatio(canvas, mask);
+      if (ratio > bestRatio) { bestRatio = ratio; bestPage = i; }
+    }
+    return bestPage >= 1 ? bestPage : null;
   }
 
-  return matchingPages[0];
+  if (matchingPages.length === 1 || !mask) return matchingPages[0];
+
+  let bestPage = matchingPages[0];
+  let bestRatio = 0;
+  for (const pageNum of matchingPages) {
+    const canvas = await renderPage(pageNum);
+    const ratio = getRegionInkRatio(canvas, mask);
+    if (ratio > bestRatio) { bestRatio = ratio; bestPage = pageNum; }
+  }
+  return bestPage;
 }
 
 export async function fileToCanvas(file: File): Promise<HTMLCanvasElement> {
