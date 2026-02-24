@@ -73,14 +73,17 @@ export async function findPageByAnchorText(
   const pdfjsLib = getPdfjsLib();
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  const search = anchorText.toLowerCase().trim();
+  const search = anchorText.toLowerCase().trim().replace(/\s+/g, ' ');
+  const searchNoSpaces = search.replace(/\s/g, '');
 
   const matchingPages: number[] = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const textContent = await page.getTextContent();
-    const pageText = (textContent.items as any[]).map((item: any) => item.str).join(' ').toLowerCase();
-    if (pageText.includes(search)) matchingPages.push(i);
+    const items = (textContent.items as any[]).map((item: any) => item.str);
+    const pageText = items.join(' ').toLowerCase().replace(/\s+/g, ' ');
+    const pageTextNoSpaces = items.join(' ').toLowerCase().replace(/\s+/g, '');
+    if (pageText.includes(search) || pageTextNoSpaces.includes(searchNoSpaces)) matchingPages.push(i);
   }
 
   if (matchingPages.length === 0) return null;
