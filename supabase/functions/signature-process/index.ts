@@ -161,12 +161,27 @@ function isolateSignature(img: Jimp): Jimp {
   return filtered.clone().crop(cx, cy, cw, ch);
 }
 
+function hasSufficientInk(img: Jimp, threshold = 200, minRatio = 0.002): boolean {
+  const w = img.getWidth();
+  const h = img.getHeight();
+  const total = w * h;
+  let dark = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (Jimp.intToRGBA(img.getPixelColor(x, y)).r < threshold) dark++;
+    }
+  }
+  return dark / total >= minRatio;
+}
+
 async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer, scaleFile2: number): Promise<number> {
   const raw1 = await Jimp.read(Buffer.from(buf1));
   const raw2 = await Jimp.read(Buffer.from(buf2));
 
   raw1.grayscale();
   raw2.grayscale();
+
+  if (!hasSufficientInk(raw1) || !hasSufficientInk(raw2)) return 0;
 
   const sig1 = isolateSignature(raw1);
   const sig2 = isolateSignature(raw2);

@@ -45,21 +45,58 @@ export async function renderPdfToCanvas(file: File): Promise<HTMLCanvasElement> 
   return renderPdfPageToCanvas(file, 1);
 }
 
-export async function findPageByAnchorText(file: File, anchorText: string): Promise<number | null> {
+function regionHasInkContent(
+  canvas: HTMLCanvasElement,
+  mask: { x: number; y: number; width: number; height: number },
+  minDarkRatio = 0.002
+): boolean {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return false;
+  const x = Math.max(0, Math.round(mask.x));
+  const y = Math.max(0, Math.round(mask.y));
+  const w = Math.min(canvas.width - x, Math.max(1, Math.round(mask.width)));
+  const h = Math.min(canvas.height - y, Math.max(1, Math.round(mask.height)));
+  if (w <= 0 || h <= 0) return false;
+  const data = ctx.getImageData(x, y, w, h).data;
+  let dark = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    if ((data[i] + data[i + 1] + data[i + 2]) / 3 < 180) dark++;
+  }
+  return dark / (w * h) >= minDarkRatio;
+}
+
+export async function findPageByAnchorText(
+  file: File,
+  anchorText: string,
+  mask?: { x: number; y: number; width: number; height: number }
+): Promise<number | null> {
   const pdfjsLib = getPdfjsLib();
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const search = anchorText.toLowerCase().trim();
+
+  const matchingPages: number[] = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const textContent = await page.getTextContent();
-    const pageText = (textContent.items as any[])
-      .map((item: any) => item.str)
-      .join(' ')
-      .toLowerCase();
-    if (pageText.includes(search)) return i;
+    const pageText = (textContent.items as any[]).map((item: any) => item.str).join(' ').toLowerCase();
+    if (pageText.includes(search)) matchingPages.push(i);
   }
-  return null;
+
+  if (matchingPages.length === 0) return null;
+  if (matchingPages.length === 1 || !mask) return matchingPages[0];
+
+  for (const pageNum of matchingPages) {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 2.0 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
+    if (regionHasInkContent(canvas, mask)) return pageNum;
+  }
+
+  return matchingPages[0];
 }
 
 export async function fileToCanvas(file: File): Promise<HTMLCanvasElement> {

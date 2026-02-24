@@ -84,7 +84,7 @@ function CompareToolContent() {
       let resolvedMask2 = mask2;
 
       if (mask1.anchorText?.trim() && file1.type === 'pdf') {
-        const found = await findPageByAnchorText(file1.file, mask1.anchorText);
+        const found = await findPageByAnchorText(file1.file, mask1.anchorText, mask1);
         if (found !== null) {
           resolvedMask1 = { ...mask1, page: found };
           setMask1(resolvedMask1);
@@ -94,7 +94,7 @@ function CompareToolContent() {
       }
 
       if (mask2.anchorText?.trim() && file2.type === 'pdf') {
-        const found = await findPageByAnchorText(file2.file, mask2.anchorText);
+        const found = await findPageByAnchorText(file2.file, mask2.anchorText, mask2);
         if (found !== null) {
           resolvedMask2 = { ...mask2, page: found };
           setMask2(resolvedMask2);

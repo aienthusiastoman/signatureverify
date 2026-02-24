@@ -272,12 +272,14 @@ export default function ApiTestPage() {
       let page2 = +activeMask2.page || 1;
 
       if (file1.type === 'application/pdf' && activeMask1.anchorText?.trim()) {
-        const found = await findPageByAnchorText(file1, activeMask1.anchorText);
+        const m1 = { x: +activeMask1.x, y: +activeMask1.y, width: +activeMask1.width, height: +activeMask1.height };
+        const found = await findPageByAnchorText(file1, activeMask1.anchorText, m1);
         if (found !== null) page1 = found;
       }
 
       if (file2.type === 'application/pdf' && activeMask2.anchorText?.trim()) {
-        const found = await findPageByAnchorText(file2, activeMask2.anchorText);
+        const m2 = { x: +activeMask2.x, y: +activeMask2.y, width: +activeMask2.width, height: +activeMask2.height };
+        const found = await findPageByAnchorText(file2, activeMask2.anchorText, m2);
         if (found !== null) page2 = found;
       }
 
