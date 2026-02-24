@@ -20,7 +20,7 @@ import HistoryPage from './pages/HistoryPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { useSignatureProcess } from './hooks/useSignatureProcess';
-import { extractRegion, renderPdfPageToCanvas, findPageByAnchorText, findPageByThumbnail } from './lib/imageUtils';
+import { extractRegion, renderPdfPageToCanvas, findPageByAnchorText, findPageBySignatureBlob } from './lib/imageUtils';
 import { detectSignatureInRegionFiltered } from './lib/signatureDetect';
 import type { UploadedFile, MaskRect, SignatureRegion, AppStep, AppView } from './types';
 
@@ -82,8 +82,8 @@ function CompareToolContent() {
 
     let foundPage: number | null = null;
 
-    if (mask.pageThumbnail) {
-      foundPage = await findPageByThumbnail(file.file, mask.pageThumbnail, mask.pageThumbnailMaskFrac);
+    if (mask.pageThumbnailMaskFrac) {
+      foundPage = await findPageBySignatureBlob(file.file, mask.pageThumbnailMaskFrac);
     }
 
     if (foundPage === null && mask.anchorText?.trim()) {

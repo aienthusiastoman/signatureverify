@@ -197,36 +197,138 @@ function neutralizeRegion(
   return out;
 }
 
-export async function findPageByThumbnail(
+function integralImage(gray: Uint8Array, w: number, h: number): Int32Array {
+  const integral = new Int32Array((w + 1) * (h + 1));
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      integral[(y + 1) * (w + 1) + (x + 1)] =
+        gray[y * w + x] +
+        integral[y * (w + 1) + (x + 1)] +
+        integral[(y + 1) * (w + 1) + x] -
+        integral[y * (w + 1) + x];
+    }
+  }
+  return integral;
+}
+
+function adaptiveThresholdGray(gray: Uint8Array, w: number, h: number, blockSize: number, C: number): Uint8Array {
+  const integral = integralImage(gray, w, h);
+  const half = Math.floor(blockSize / 2);
+  const result = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const x1 = Math.max(0, x - half), y1 = Math.max(0, y - half);
+      const x2 = Math.min(w - 1, x + half), y2 = Math.min(h - 1, y + half);
+      const area = (x2 - x1 + 1) * (y2 - y1 + 1);
+      const sum =
+        integral[(y2 + 1) * (w + 1) + (x2 + 1)] -
+        integral[y1 * (w + 1) + (x2 + 1)] -
+        integral[(y2 + 1) * (w + 1) + x1] +
+        integral[y1 * (w + 1) + x1];
+      result[y * w + x] = gray[y * w + x] < sum / area - C ? 255 : 0;
+    }
+  }
+  return result;
+}
+
+function removeLongRunsH(bin: Uint8Array, w: number, h: number, minLen: number): void {
+  for (let y = 0; y < h; y++) {
+    let runStart = 0, run = 0;
+    for (let x = 0; x <= w; x++) {
+      if (x < w && bin[y * w + x] > 0) {
+        if (run === 0) runStart = x;
+        run++;
+      } else {
+        if (run >= minLen) for (let rx = runStart; rx < runStart + run; rx++) bin[y * w + rx] = 0;
+        run = 0;
+      }
+    }
+  }
+}
+
+function removeLongRunsV(bin: Uint8Array, w: number, h: number, minLen: number): void {
+  for (let x = 0; x < w; x++) {
+    let runStart = 0, run = 0;
+    for (let y = 0; y <= h; y++) {
+      if (y < h && bin[y * w + x] > 0) {
+        if (run === 0) runStart = y;
+        run++;
+      } else {
+        if (run >= minLen) for (let ry = runStart; ry < runStart + run; ry++) bin[ry * w + x] = 0;
+        run = 0;
+      }
+    }
+  }
+}
+
+function largestBlobArea(bin: Uint8Array, w: number, h: number): number {
+  const visited = new Uint8Array(w * h);
+  let maxArea = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (bin[i] === 0 || visited[i]) continue;
+    const stack = [i];
+    visited[i] = 1;
+    let area = 0;
+    while (stack.length > 0) {
+      const idx = stack.pop()!;
+      area++;
+      const x = idx % w, y = Math.floor(idx / w);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as [number, number][]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+        const nidx = ny * w + nx;
+        if (bin[nidx] === 0 || visited[nidx]) continue;
+        visited[nidx] = 1;
+        stack.push(nidx);
+      }
+    }
+    if (area > maxArea) maxArea = area;
+  }
+  return maxArea;
+}
+
+export async function findPageBySignatureBlob(
   file: File,
-  refThumbnailDataUrl: string,
-  maskFrac?: { x: number; y: number; w: number; h: number }
+  maskFrac: { x: number; y: number; w: number; h: number }
 ): Promise<number> {
   const pdfjsLib = getPdfjsLib();
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-  const MATCH_W = 120;
-  const MATCH_H = 160;
-  const rawRefPixels = await dataUrlToGrayPixels(refThumbnailDataUrl, MATCH_W, MATCH_H);
-  const refPixels = maskFrac ? neutralizeRegion(rawRefPixels, maskFrac, MATCH_W, MATCH_H) : rawRefPixels;
-
   let bestPage = 1;
-  let bestScore = -Infinity;
+  let bestArea = 0;
 
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
-    const baseVP = page.getViewport({ scale: 1.0 });
-    const scale = MATCH_W / baseVP.width;
-    const vp = page.getViewport({ scale });
+    const viewport = page.getViewport({ scale: 1.0 });
     const canvas = document.createElement('canvas');
-    canvas.width = Math.round(vp.width);
-    canvas.height = Math.round(vp.height);
-    await page.render({ canvasContext: canvas.getContext('2d')!, viewport: vp }).promise;
-    const rawPixels = canvasToGrayPixels(canvas, MATCH_W, MATCH_H);
-    const pixels = maskFrac ? neutralizeRegion(rawPixels, maskFrac, MATCH_W, MATCH_H) : rawPixels;
-    const score = nccPixels(refPixels, pixels);
-    if (score > bestScore) { bestScore = score; bestPage = i; }
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
+
+    const pw = canvas.width, ph = canvas.height;
+    const cx = Math.round(maskFrac.x * pw);
+    const cy = Math.round(maskFrac.y * ph);
+    const cw = Math.max(1, Math.round(maskFrac.w * pw));
+    const ch = Math.max(1, Math.round(maskFrac.h * ph));
+
+    const imgData = canvas.getContext('2d')!.getImageData(cx, cy, cw, ch);
+    const d = imgData.data;
+
+    const gray = new Uint8Array(cw * ch);
+    for (let j = 0; j < cw * ch; j++) {
+      gray[j] = Math.round(0.299 * d[j * 4] + 0.587 * d[j * 4 + 1] + 0.114 * d[j * 4 + 2]);
+    }
+
+    const thresh = adaptiveThresholdGray(gray, cw, ch, 31, 15);
+    removeLongRunsH(thresh, cw, ch, Math.max(20, Math.round(cw * 0.4)));
+    removeLongRunsV(thresh, cw, ch, Math.max(20, Math.round(ch * 0.4)));
+
+    const area = largestBlobArea(thresh, cw, ch);
+    if (area > bestArea) {
+      bestArea = area;
+      bestPage = i;
+    }
   }
 
   return bestPage;

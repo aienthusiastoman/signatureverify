@@ -15,54 +15,112 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
-function binarize(img: Jimp, threshold = 180): boolean[][] {
+function jimpToGray(img: Jimp): { gray: Uint8Array; w: number; h: number } {
   const w = img.getWidth();
   const h = img.getHeight();
-  const bin: boolean[][] = [];
+  const gray = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
-    bin[y] = [];
     for (let x = 0; x < w; x++) {
       const { r, g, b } = Jimp.intToRGBA(img.getPixelColor(x, y));
-      bin[y][x] = (r + g + b) / 3 < threshold;
+      gray[y * w + x] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
     }
   }
-  return bin;
+  return { gray, w, h };
 }
 
-function labelComponents(bin: boolean[][], w: number, h: number): { labels: Int32Array; count: number } {
-  const labels = new Int32Array(w * h).fill(0);
+function adaptiveThreshold(gray: Uint8Array, w: number, h: number, blockSize: number, C: number): Uint8Array {
+  const integral = new Int32Array((w + 1) * (h + 1));
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      integral[(y + 1) * (w + 1) + (x + 1)] =
+        gray[y * w + x] +
+        integral[y * (w + 1) + (x + 1)] +
+        integral[(y + 1) * (w + 1) + x] -
+        integral[y * (w + 1) + x];
+    }
+  }
+  const half = Math.floor(blockSize / 2);
+  const result = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const x1 = Math.max(0, x - half), y1 = Math.max(0, y - half);
+      const x2 = Math.min(w - 1, x + half), y2 = Math.min(h - 1, y + half);
+      const area = (x2 - x1 + 1) * (y2 - y1 + 1);
+      const sum =
+        integral[(y2 + 1) * (w + 1) + (x2 + 1)] -
+        integral[y1 * (w + 1) + (x2 + 1)] -
+        integral[(y2 + 1) * (w + 1) + x1] +
+        integral[y1 * (w + 1) + x1];
+      result[y * w + x] = gray[y * w + x] < sum / area - C ? 255 : 0;
+    }
+  }
+  return result;
+}
+
+function removeLongRunsH(bin: Uint8Array, w: number, h: number, minLen: number): void {
+  for (let y = 0; y < h; y++) {
+    let runStart = 0, run = 0;
+    for (let x = 0; x <= w; x++) {
+      if (x < w && bin[y * w + x] > 0) {
+        if (run === 0) runStart = x;
+        run++;
+      } else {
+        if (run >= minLen) for (let rx = runStart; rx < runStart + run; rx++) bin[y * w + rx] = 0;
+        run = 0;
+      }
+    }
+  }
+}
+
+function removeLongRunsV(bin: Uint8Array, w: number, h: number, minLen: number): void {
+  for (let x = 0; x < w; x++) {
+    let runStart = 0, run = 0;
+    for (let y = 0; y <= h; y++) {
+      if (y < h && bin[y * w + x] > 0) {
+        if (run === 0) runStart = y;
+        run++;
+      } else {
+        if (run >= minLen) for (let ry = runStart; ry < runStart + run; ry++) bin[ry * w + x] = 0;
+        run = 0;
+      }
+    }
+  }
+}
+
+function extractLargestBlob(bin: Uint8Array, w: number, h: number): { pixels: Uint8Array; area: number } {
+  const labels = new Int32Array(w * h);
+  const componentPixels: number[][] = [[]];
   let nextLabel = 1;
   const parent: number[] = [0];
 
-  function find(x: number): number {
-    while (parent[x] !== x) {
-      parent[x] = parent[parent[x]];
-      x = parent[x];
-    }
+  const find = (x: number): number => {
+    while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; }
     return x;
-  }
-
-  function union(a: number, b: number) {
+  };
+  const union = (a: number, b: number) => {
     const ra = find(a), rb = find(b);
     if (ra !== rb) parent[ra] = rb;
-  }
+  };
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (!bin[y][x]) continue;
+      if (bin[y * w + x] === 0) continue;
       const idx = y * w + x;
-      const neighbors: number[] = [];
-      if (x > 0 && bin[y][x - 1]) neighbors.push(labels[idx - 1]);
-      if (y > 0 && bin[y - 1][x]) neighbors.push(labels[(y - 1) * w + x]);
-      const validN = neighbors.filter(n => n > 0);
-      if (validN.length === 0) {
+      const left = x > 0 ? labels[idx - 1] : 0;
+      const top = y > 0 ? labels[(y - 1) * w + x] : 0;
+      if (left === 0 && top === 0) {
         labels[idx] = nextLabel;
         parent.push(nextLabel);
+        componentPixels.push([idx]);
         nextLabel++;
+      } else if (left > 0 && top === 0) {
+        labels[idx] = left;
+      } else if (top > 0 && left === 0) {
+        labels[idx] = top;
       } else {
-        const minL = Math.min(...validN);
+        const minL = Math.min(left, top);
         labels[idx] = minL;
-        for (const n of validN) union(minL, n);
+        union(left, top);
       }
     }
   }
@@ -71,167 +129,162 @@ function labelComponents(bin: boolean[][], w: number, h: number): { labels: Int3
     if (labels[i] > 0) labels[i] = find(labels[i]);
   }
 
-  return { labels, count: nextLabel - 1 };
-}
-
-function filterTypedText(img: Jimp): Jimp {
-  const w = img.getWidth();
-  const h = img.getHeight();
-  const bin = binarize(img, 180);
-  const { labels, count } = labelComponents(bin, w, h);
-
-  const bboxes: { minX: number; maxX: number; minY: number; maxY: number; pixels: number }[] =
-    Array.from({ length: count + 1 }, () => ({ minX: w, maxX: 0, minY: h, maxY: 0, pixels: 0 }));
-
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const lbl = labels[y * w + x];
-      if (lbl === 0) continue;
-      const bb = bboxes[lbl];
-      if (x < bb.minX) bb.minX = x;
-      if (x > bb.maxX) bb.maxX = x;
-      if (y < bb.minY) bb.minY = y;
-      if (y > bb.maxY) bb.maxY = y;
-      bb.pixels++;
-    }
+  const areas = new Map<number, number>();
+  for (let i = 0; i < w * h; i++) {
+    if (labels[i] > 0) areas.set(labels[i], (areas.get(labels[i]) ?? 0) + 1);
   }
 
-  const result = img.clone();
-  const whiteInt = Jimp.rgbaToInt(255, 255, 255, 255);
+  if (areas.size === 0) return { pixels: new Uint8Array(w * h), area: 0 };
 
-  for (let lbl = 1; lbl <= count; lbl++) {
-    const bb = bboxes[lbl];
-    if (bb.pixels === 0) continue;
-    const bw = bb.maxX - bb.minX + 1;
-    const bh = bb.maxY - bb.minY + 1;
-    const aspect = bw / Math.max(1, bh);
-    const density = bb.pixels / Math.max(1, bw * bh);
-
-    const isTyped =
-      bh < 30 &&
-      bw < 35 &&
-      aspect > 0.2 && aspect < 3.5 &&
-      density > 0.25 &&
-      bb.pixels < 600;
-
-    if (isTyped) {
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          if (labels[y * w + x] === lbl) {
-            result.setPixelColor(whiteInt, x, y);
-          }
-        }
-      }
-    }
+  let bestLabel = 0, bestArea = 0;
+  for (const [lbl, area] of areas) {
+    if (area > bestArea) { bestArea = area; bestLabel = lbl; }
   }
 
-  return result;
+  const result = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    if (labels[i] === bestLabel) result[i] = 255;
+  }
+  return { pixels: result, area: bestArea };
 }
 
-function isolateSignature(img: Jimp): Jimp {
-  const filtered = filterTypedText(img);
-  const w = filtered.getWidth();
-  const h = filtered.getHeight();
-
-  let minX = w, maxX = 0, minY = h, maxY = 0;
-  const threshold = 200;
-
+function normalizeSignature(bin: Uint8Array, w: number, h: number, targetW = 600, targetH = 250): Uint8Array | null {
+  let minX = w, maxX = 0, minY = h, maxY = 0, found = false;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const { r, g, b } = Jimp.intToRGBA(filtered.getPixelColor(x, y));
-      if ((r + g + b) / 3 < threshold) {
+      if (bin[y * w + x] > 0) {
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
         if (y > maxY) maxY = y;
+        found = true;
       }
     }
   }
+  if (!found) return null;
 
-  if (minX >= maxX || minY >= maxY) {
-    return filtered;
-  }
+  const cropW = maxX - minX + 1;
+  const cropH = maxY - minY + 1;
+  const scale = Math.min(targetH / cropH, targetW / cropW);
+  const newW = Math.round(cropW * scale);
+  const newH = Math.round(cropH * scale);
 
-  const pad = 4;
-  const cx = Math.max(0, minX - pad);
-  const cy = Math.max(0, minY - pad);
-  const cw = Math.min(w - cx, maxX - minX + pad * 2);
-  const ch = Math.min(h - cy, maxY - minY + pad * 2);
-
-  return filtered.clone().crop(cx, cy, cw, ch);
-}
-
-function hasSufficientInk(img: Jimp, threshold = 200, minRatio = 0.002): boolean {
-  const w = img.getWidth();
-  const h = img.getHeight();
-  const total = w * h;
-  let dark = 0;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (Jimp.intToRGBA(img.getPixelColor(x, y)).r < threshold) dark++;
+  const resized = new Uint8Array(newW * newH);
+  for (let y = 0; y < newH; y++) {
+    for (let x = 0; x < newW; x++) {
+      const srcX = minX + Math.min(cropW - 1, Math.floor(x / scale));
+      const srcY = minY + Math.min(cropH - 1, Math.floor(y / scale));
+      resized[y * newW + x] = bin[srcY * w + srcX];
     }
   }
-  return dark / total >= minRatio;
+
+  const canvas = new Uint8Array(targetW * targetH);
+  const offsetX = Math.floor((targetW - newW) / 2);
+  const offsetY = Math.floor((targetH - newH) / 2);
+  for (let y = 0; y < newH; y++) {
+    for (let x = 0; x < newW; x++) {
+      canvas[(y + offsetY) * targetW + (x + offsetX)] = resized[y * newW + x];
+    }
+  }
+  return canvas;
 }
 
-async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer, scaleFile2: number): Promise<number> {
+function zhangSuenSkeleton(bin: Uint8Array, w: number, h: number): Uint8Array {
+  const img = new Uint8Array(bin);
+  const get = (x: number, y: number) =>
+    x >= 0 && x < w && y >= 0 && y < h && img[y * w + x] > 0 ? 1 : 0;
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let pass = 0; pass < 2; pass++) {
+      const toRemove: number[] = [];
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          if (img[y * w + x] === 0) continue;
+          const p2 = get(x, y - 1), p3 = get(x + 1, y - 1), p4 = get(x + 1, y),
+            p5 = get(x + 1, y + 1), p6 = get(x, y + 1), p7 = get(x - 1, y + 1),
+            p8 = get(x - 1, y), p9 = get(x - 1, y - 1);
+          const B = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+          if (B < 2 || B > 6) continue;
+          const A = (p2 === 0 && p3 === 1 ? 1 : 0) + (p3 === 0 && p4 === 1 ? 1 : 0) +
+            (p4 === 0 && p5 === 1 ? 1 : 0) + (p5 === 0 && p6 === 1 ? 1 : 0) +
+            (p6 === 0 && p7 === 1 ? 1 : 0) + (p7 === 0 && p8 === 1 ? 1 : 0) +
+            (p8 === 0 && p9 === 1 ? 1 : 0) + (p9 === 0 && p2 === 1 ? 1 : 0);
+          if (A !== 1) continue;
+          if (pass === 0 && p2 * p4 * p6 !== 0) continue;
+          if (pass === 0 && p4 * p6 * p8 !== 0) continue;
+          if (pass === 1 && p2 * p4 * p8 !== 0) continue;
+          if (pass === 1 && p2 * p6 * p8 !== 0) continue;
+          toRemove.push(y * w + x);
+        }
+      }
+      for (const idx of toRemove) { img[idx] = 0; changed = true; }
+    }
+  }
+  return img;
+}
+
+function curveProfileSimilarity(sig1: Uint8Array, sig2: Uint8Array, w: number, h: number): number {
+  const c1 = new Float64Array(w);
+  const c2 = new Float64Array(w);
+
+  for (let x = 0; x < w; x++) {
+    let sum1 = 0, cnt1 = 0, sum2 = 0, cnt2 = 0;
+    for (let y = 0; y < h; y++) {
+      if (sig1[y * w + x] > 0) { sum1 += y; cnt1++; }
+      if (sig2[y * w + x] > 0) { sum2 += y; cnt2++; }
+    }
+    c1[x] = cnt1 > 0 ? sum1 / cnt1 : h;
+    c2[x] = cnt2 > 0 ? sum2 / cnt2 : h;
+  }
+
+  let m1 = 0, m2 = 0;
+  for (let x = 0; x < w; x++) { m1 += c1[x]; m2 += c2[x]; }
+  m1 /= w; m2 /= w;
+
+  let s1 = 0, s2 = 0;
+  for (let x = 0; x < w; x++) { s1 += (c1[x] - m1) ** 2; s2 += (c2[x] - m2) ** 2; }
+  s1 = Math.sqrt(s1 / w) + 1e-6;
+  s2 = Math.sqrt(s2 / w) + 1e-6;
+
+  let corr = 0;
+  for (let x = 0; x < w; x++) corr += ((c1[x] - m1) / s1) * ((c2[x] - m2) / s2);
+  corr /= w;
+
+  return Math.max(0, corr) * 100;
+}
+
+function extractSignatureBlob(img: Jimp): { pixels: Uint8Array; w: number; h: number } | null {
+  const { gray, w, h } = jimpToGray(img);
+  const thresh = adaptiveThreshold(gray, w, h, 31, 15);
+  removeLongRunsH(thresh, w, h, Math.max(20, Math.round(w * 0.4)));
+  removeLongRunsV(thresh, w, h, Math.max(20, Math.round(h * 0.4)));
+  const { pixels, area } = extractLargestBlob(thresh, w, h);
+  if (area < 50) return null;
+  return { pixels, w, h };
+}
+
+async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer, _scaleFile2: number): Promise<number> {
   const raw1 = await Jimp.read(Buffer.from(buf1));
   const raw2 = await Jimp.read(Buffer.from(buf2));
-
   raw1.grayscale();
   raw2.grayscale();
 
-  if (!hasSufficientInk(raw1) || !hasSufficientInk(raw2)) return 0;
+  const blob1 = extractSignatureBlob(raw1);
+  const blob2 = extractSignatureBlob(raw2);
+  if (!blob1 || !blob2) return 0;
 
-  const sig1 = isolateSignature(raw1);
-  const sig2 = isolateSignature(raw2);
+  const TARGET_W = 600, TARGET_H = 250;
+  const norm1 = normalizeSignature(blob1.pixels, blob1.w, blob1.h, TARGET_W, TARGET_H);
+  const norm2 = normalizeSignature(blob2.pixels, blob2.w, blob2.h, TARGET_W, TARGET_H);
+  if (!norm1 || !norm2) return 0;
 
-  const W = 300;
-  const H = 150;
+  const skel1 = zhangSuenSkeleton(norm1, TARGET_W, TARGET_H);
+  const skel2 = zhangSuenSkeleton(norm2, TARGET_W, TARGET_H);
 
-  sig1.resize(W, H);
-  sig2.resize(W, H);
-
-  if (scaleFile2 !== 1.0) {
-    const sw = Math.round(W * scaleFile2);
-    const sh = Math.round(H * scaleFile2);
-    const scaled = sig2.clone().resize(Math.max(1, sw), Math.max(1, sh));
-    const offsetX = Math.max(0, Math.floor((sw - W) / 2));
-    const offsetY = Math.max(0, Math.floor((sh - H) / 2));
-    const cropped = sw > W || sh > H ? scaled.crop(offsetX, offsetY, W, H) : scaled.resize(W, H);
-    sig2.bitmap = cropped.bitmap;
-  }
-
-  const pixels1: number[] = [];
-  const pixels2: number[] = [];
-
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      pixels1.push(Jimp.intToRGBA(sig1.getPixelColor(x, y)).r);
-      pixels2.push(Jimp.intToRGBA(sig2.getPixelColor(x, y)).r);
-    }
-  }
-
-  const n = pixels1.length;
-  const mean1 = pixels1.reduce((a, b) => a + b, 0) / n;
-  const mean2 = pixels2.reduce((a, b) => a + b, 0) / n;
-
-  let num = 0, den1 = 0, den2 = 0;
-  for (let i = 0; i < n; i++) {
-    const d1 = pixels1[i] - mean1;
-    const d2 = pixels2[i] - mean2;
-    num += d1 * d2;
-    den1 += d1 * d1;
-    den2 += d2 * d2;
-  }
-
-  if (den1 === 0 || den2 === 0) return 50;
-  const ncc = num / Math.sqrt(den1 * den2);
-
-  const nccClamped = Math.max(-1, Math.min(1, ncc));
-  const raw = ((nccClamped + 1) / 2) * 100;
-  const score = Math.pow(raw / 100, 0.5) * 100;
-  return Math.max(0, Math.min(100, score));
+  const score = curveProfileSimilarity(skel1, skel2, TARGET_W, TARGET_H);
+  return Math.min(100, Math.max(0, score * 1.25));
 }
 
 async function cropImageToMask(
@@ -346,11 +399,11 @@ async function generatePDF(
   page.drawRectangle({ x: 30, y: analysisY - 90, width: width - 60, height: 80, color: cardBg, borderColor, borderWidth: 1 });
   page.drawText("ANALYSIS METHODOLOGY", { x: 50, y: analysisY - 18, size: 9, font, color: muted });
   page.drawText(
-    "Signatures compared using Normalized Cross-Correlation (NCC). Typed text filtered via connected-component",
+    "Adaptive thresholding isolates ink strokes. Long lines removed. Largest connected blob retained per document.",
     { x: 50, y: analysisY - 38, size: 8, font: fontReg, color: rgb(0.7, 0.77, 0.85) }
   );
   page.drawText(
-    "analysis. Only ink strokes are compared. Both regions normalized to 200x100px. Scale factor applied to Doc 2.",
+    "Signatures normalized to 600x250px and skeletonized (Zhang-Suen). Curve-profile Pearson correlation applied.",
     { x: 50, y: analysisY - 52, size: 8, font: fontReg, color: rgb(0.7, 0.77, 0.85) }
   );
   page.drawText("Thresholds: 0-49% Mismatch  |  50-74% Moderate Match  |  75-100% High Confidence Match", {
