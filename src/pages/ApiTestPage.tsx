@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { FlaskConical, Play, Copy, CheckCircle, Loader2, Upload, X, ChevronDown, LayoutTemplate } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { renderPdfPageToCanvas, canvasToBlob, findPageByAnchorText } from '../lib/imageUtils';
+import { renderPdfPageToCanvas, canvasToBlob, findPageByAnchorText, findPageBySignatureBlob } from '../lib/imageUtils';
 import type { SavedTemplate, MaskRect } from '../types';
 
 type Language = 'curl' | 'javascript' | 'python' | 'php' | 'go';
@@ -260,6 +260,26 @@ export default function ApiTestPage() {
     });
   };
 
+  const resolvePageForFile = async (file: File, mask: MaskInput): Promise<number> => {
+    if (file.type !== 'application/pdf') return 1;
+    const defaultPage = +mask.page || 1;
+    const m = { x: +mask.x, y: +mask.y, width: +mask.width, height: +mask.height };
+
+    const canvas = await renderPdfPageToCanvas(file, defaultPage);
+    const pw = canvas.width, ph = canvas.height;
+    if (pw > 0 && ph > 0 && m.width > 5 && m.height > 5) {
+      const frac = { x: m.x / pw, y: m.y / ph, w: m.width / pw, h: m.height / ph };
+      return await findPageBySignatureBlob(file, frac);
+    }
+
+    if (mask.anchorText?.trim()) {
+      const found = await findPageByAnchorText(file, mask.anchorText, m);
+      if (found !== null) return found;
+    }
+
+    return defaultPage;
+  };
+
   const handleRun = async () => {
     if (!file1 || !file2) return;
     setLoading(true);
@@ -268,20 +288,10 @@ export default function ApiTestPage() {
     try {
       const { data: { session: freshSession } } = await supabase.auth.getSession();
 
-      let page1 = +activeMask1.page || 1;
-      let page2 = +activeMask2.page || 1;
-
-      if (file1.type === 'application/pdf' && activeMask1.anchorText?.trim()) {
-        const m1 = { x: +activeMask1.x, y: +activeMask1.y, width: +activeMask1.width, height: +activeMask1.height };
-        const found = await findPageByAnchorText(file1, activeMask1.anchorText, m1);
-        if (found !== null) page1 = found;
-      }
-
-      if (file2.type === 'application/pdf' && activeMask2.anchorText?.trim()) {
-        const m2 = { x: +activeMask2.x, y: +activeMask2.y, width: +activeMask2.width, height: +activeMask2.height };
-        const found = await findPageByAnchorText(file2, activeMask2.anchorText, m2);
-        if (found !== null) page2 = found;
-      }
+      const [page1, page2] = await Promise.all([
+        resolvePageForFile(file1, activeMask1),
+        resolvePageForFile(file2, activeMask2),
+      ]);
 
       const [b64_1, b64_2] = await Promise.all([toBase64(file1, page1), toBase64(file2, page2)]);
 

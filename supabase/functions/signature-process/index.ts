@@ -28,68 +28,118 @@ function jimpToGray(img: Jimp): { gray: Uint8Array; w: number; h: number } {
   return { gray, w, h };
 }
 
-function adaptiveThreshold(gray: Uint8Array, w: number, h: number, blockSize: number, C: number): Uint8Array {
-  const integral = new Int32Array((w + 1) * (h + 1));
+function gaussianKernel1D(sigma: number): number[] {
+  const half = Math.floor(sigma * 3);
+  const kernel: number[] = [];
+  let sum = 0;
+  for (let i = -half; i <= half; i++) {
+    const v = Math.exp(-(i * i) / (2 * sigma * sigma));
+    kernel.push(v);
+    sum += v;
+  }
+  return kernel.map(v => v / sum);
+}
+
+function buildGaussianIntegral(gray: Uint8Array, w: number, h: number, blockSize: number): Float64Array {
+  const sigma = (blockSize - 1) / 6;
+  const kernel = gaussianKernel1D(sigma);
+  const half = Math.floor(kernel.length / 2);
+
+  const tmp = new Float64Array(w * h);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      integral[(y + 1) * (w + 1) + (x + 1)] =
-        gray[y * w + x] +
-        integral[y * (w + 1) + (x + 1)] +
-        integral[(y + 1) * (w + 1) + x] -
-        integral[y * (w + 1) + x];
+      let val = 0;
+      for (let k = 0; k < kernel.length; k++) {
+        const sx = Math.max(0, Math.min(w - 1, x - half + k));
+        val += gray[y * w + sx] * kernel[k];
+      }
+      tmp[y * w + x] = val;
     }
   }
-  const half = Math.floor(blockSize / 2);
-  const result = new Uint8Array(w * h);
+
+  const blurred = new Float64Array(w * h);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const x1 = Math.max(0, x - half), y1 = Math.max(0, y - half);
-      const x2 = Math.min(w - 1, x + half), y2 = Math.min(h - 1, y + half);
-      const area = (x2 - x1 + 1) * (y2 - y1 + 1);
-      const sum =
-        integral[(y2 + 1) * (w + 1) + (x2 + 1)] -
-        integral[y1 * (w + 1) + (x2 + 1)] -
-        integral[(y2 + 1) * (w + 1) + x1] +
-        integral[y1 * (w + 1) + x1];
-      result[y * w + x] = gray[y * w + x] < sum / area - C ? 255 : 0;
+      let val = 0;
+      for (let k = 0; k < kernel.length; k++) {
+        const sy = Math.max(0, Math.min(h - 1, y - half + k));
+        val += tmp[sy * w + x] * kernel[k];
+      }
+      blurred[y * w + x] = val;
     }
+  }
+  return blurred;
+}
+
+function adaptiveThresholdGaussian(gray: Uint8Array, w: number, h: number, blockSize: number, C: number): Uint8Array {
+  const blurred = buildGaussianIntegral(gray, w, h, blockSize);
+  const result = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    result[i] = gray[i] < blurred[i] - C ? 255 : 0;
   }
   return result;
 }
 
-function removeLongRunsH(bin: Uint8Array, w: number, h: number, minLen: number): void {
+function morphOpenH(bin: Uint8Array, w: number, h: number, kernelW: number): Uint8Array {
+  const eroded = new Uint8Array(w * h);
+  const half = Math.floor(kernelW / 2);
   for (let y = 0; y < h; y++) {
-    let runStart = 0, run = 0;
-    for (let x = 0; x <= w; x++) {
-      if (x < w && bin[y * w + x] > 0) {
-        if (run === 0) runStart = x;
-        run++;
-      } else {
-        if (run >= minLen) for (let rx = runStart; rx < runStart + run; rx++) bin[y * w + rx] = 0;
-        run = 0;
+    for (let x = 0; x < w; x++) {
+      let allSet = true;
+      for (let dx = -half; dx <= half; dx++) {
+        const nx = x + dx;
+        if (nx < 0 || nx >= w || bin[y * w + nx] === 0) { allSet = false; break; }
+      }
+      eroded[y * w + x] = allSet ? 255 : 0;
+    }
+  }
+  const dilated = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (eroded[y * w + x] === 0) continue;
+      for (let dx = -half; dx <= half; dx++) {
+        const nx = x + dx;
+        if (nx >= 0 && nx < w) dilated[y * w + nx] = 255;
       }
     }
   }
+  return dilated;
 }
 
-function removeLongRunsV(bin: Uint8Array, w: number, h: number, minLen: number): void {
-  for (let x = 0; x < w; x++) {
-    let runStart = 0, run = 0;
-    for (let y = 0; y <= h; y++) {
-      if (y < h && bin[y * w + x] > 0) {
-        if (run === 0) runStart = y;
-        run++;
-      } else {
-        if (run >= minLen) for (let ry = runStart; ry < runStart + run; ry++) bin[ry * w + x] = 0;
-        run = 0;
+function morphOpenV(bin: Uint8Array, w: number, h: number, kernelH: number): Uint8Array {
+  const eroded = new Uint8Array(w * h);
+  const half = Math.floor(kernelH / 2);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let allSet = true;
+      for (let dy = -half; dy <= half; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h || bin[ny * w + x] === 0) { allSet = false; break; }
+      }
+      eroded[y * w + x] = allSet ? 255 : 0;
+    }
+  }
+  const dilated = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (eroded[y * w + x] === 0) continue;
+      for (let dy = -half; dy <= half; dy++) {
+        const ny = y + dy;
+        if (ny >= 0 && ny < h) dilated[ny * w + x] = 255;
       }
     }
+  }
+  return dilated;
+}
+
+function subtractBin(src: Uint8Array, mask: Uint8Array): void {
+  for (let i = 0; i < src.length; i++) {
+    if (mask[i] > 0) src[i] = 0;
   }
 }
 
 function extractLargestBlob(bin: Uint8Array, w: number, h: number): { pixels: Uint8Array; area: number } {
   const labels = new Int32Array(w * h);
-  const componentPixels: number[][] = [[]];
   let nextLabel = 1;
   const parent: number[] = [0];
 
@@ -111,7 +161,6 @@ function extractLargestBlob(bin: Uint8Array, w: number, h: number): { pixels: Ui
       if (left === 0 && top === 0) {
         labels[idx] = nextLabel;
         parent.push(nextLabel);
-        componentPixels.push([idx]);
         nextLabel++;
       } else if (left > 0 && top === 0) {
         labels[idx] = left;
@@ -146,6 +195,22 @@ function extractLargestBlob(bin: Uint8Array, w: number, h: number): { pixels: Ui
     if (labels[i] === bestLabel) result[i] = 255;
   }
   return { pixels: result, area: bestArea };
+}
+
+function extractSignatureBlob(img: Jimp): { pixels: Uint8Array; w: number; h: number } | null {
+  const { gray, w, h } = jimpToGray(img);
+
+  const thresh = adaptiveThresholdGaussian(gray, w, h, 31, 15);
+
+  const hLines = morphOpenH(thresh, w, h, 80);
+  subtractBin(thresh, hLines);
+
+  const vLines = morphOpenV(thresh, w, h, 80);
+  subtractBin(thresh, vLines);
+
+  const { pixels, area } = extractLargestBlob(thresh, w, h);
+  if (area < 800) return null;
+  return { pixels, w, h };
 }
 
 function normalizeSignature(bin: Uint8Array, w: number, h: number, targetW = 600, targetH = 250): Uint8Array | null {
@@ -255,17 +320,7 @@ function curveProfileSimilarity(sig1: Uint8Array, sig2: Uint8Array, w: number, h
   return Math.max(0, corr) * 100;
 }
 
-function extractSignatureBlob(img: Jimp): { pixels: Uint8Array; w: number; h: number } | null {
-  const { gray, w, h } = jimpToGray(img);
-  const thresh = adaptiveThreshold(gray, w, h, 31, 15);
-  removeLongRunsH(thresh, w, h, Math.max(20, Math.round(w * 0.4)));
-  removeLongRunsV(thresh, w, h, Math.max(20, Math.round(h * 0.4)));
-  const { pixels, area } = extractLargestBlob(thresh, w, h);
-  if (area < 50) return null;
-  return { pixels, w, h };
-}
-
-async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer, _scaleFile2: number): Promise<number> {
+async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer): Promise<number> {
   const raw1 = await Jimp.read(Buffer.from(buf1));
   const raw2 = await Jimp.read(Buffer.from(buf2));
   raw1.grayscale();
@@ -283,8 +338,8 @@ async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer, _scaleFil
   const skel1 = zhangSuenSkeleton(norm1, TARGET_W, TARGET_H);
   const skel2 = zhangSuenSkeleton(norm2, TARGET_W, TARGET_H);
 
-  const score = curveProfileSimilarity(skel1, skel2, TARGET_W, TARGET_H);
-  return Math.min(100, Math.max(0, score * 1.25));
+  const rawScore = curveProfileSimilarity(skel1, skel2, TARGET_W, TARGET_H);
+  return Math.min(100, Math.max(0, rawScore * 1.25));
 }
 
 async function cropImageToMask(
@@ -399,7 +454,7 @@ async function generatePDF(
   page.drawRectangle({ x: 30, y: analysisY - 90, width: width - 60, height: 80, color: cardBg, borderColor, borderWidth: 1 });
   page.drawText("ANALYSIS METHODOLOGY", { x: 50, y: analysisY - 18, size: 9, font, color: muted });
   page.drawText(
-    "Adaptive thresholding isolates ink strokes. Long lines removed. Largest connected blob retained per document.",
+    "Gaussian adaptive thresholding isolates ink strokes. Long lines removed via morphological opening.",
     { x: 50, y: analysisY - 38, size: 8, font: fontReg, color: rgb(0.7, 0.77, 0.85) }
   );
   page.drawText(
