@@ -295,6 +295,13 @@ export function extractSignatureStrokes(
   return { cleaned: thresh, area };
 }
 
+const RENDER_SCALE = 2.0;
+const RENDER_DPI = 72 * RENDER_SCALE;
+const PYTHON_DPI = 400;
+const DPI_RATIO = RENDER_DPI / PYTHON_DPI;
+export const LINE_KERNEL = Math.max(10, Math.round(80 * DPI_RATIO));
+export const MIN_AREA = Math.max(30, Math.round(800 * DPI_RATIO * DPI_RATIO));
+
 export async function findPageBySignatureBlob(
   file: File,
   maskFrac: { x: number; y: number; w: number; h: number }
@@ -308,7 +315,7 @@ export async function findPageBySignatureBlob(
 
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: 2.0 });
+    const viewport = page.getViewport({ scale: RENDER_SCALE });
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(viewport.width);
     canvas.height = Math.round(viewport.height);
@@ -328,7 +335,7 @@ export async function findPageBySignatureBlob(
       gray[j] = Math.round(0.299 * d[j * 4] + 0.587 * d[j * 4 + 1] + 0.114 * d[j * 4 + 2]);
     }
 
-    const result = extractSignatureStrokes(gray, cw, ch, 80, 800);
+    const result = extractSignatureStrokes(gray, cw, ch, LINE_KERNEL, MIN_AREA);
     if (result && result.area > bestArea) {
       bestArea = result.area;
       bestPage = i;
@@ -392,7 +399,7 @@ export async function findPageByAnchorText(
       for (let j = 0; j < cw * ch; j++) {
         gray[j] = Math.round(0.299 * d[j * 4] + 0.587 * d[j * 4 + 1] + 0.114 * d[j * 4 + 2]);
       }
-      const result = extractSignatureStrokes(gray, cw, ch, 80, 800);
+      const result = extractSignatureStrokes(gray, cw, ch, LINE_KERNEL, MIN_AREA);
       if (result && result.area > bestArea) {
         bestArea = result.area;
         bestPage = p;

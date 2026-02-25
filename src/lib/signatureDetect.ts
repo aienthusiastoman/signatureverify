@@ -1,5 +1,5 @@
 import type { MaskRect } from '../types';
-import { extractSignatureStrokes } from './imageUtils';
+import { extractSignatureStrokes, LINE_KERNEL, MIN_AREA } from './imageUtils';
 
 export function autoDetectSignature(canvas: HTMLCanvasElement): MaskRect {
   const ctx = canvas.getContext('2d')!;
@@ -74,7 +74,7 @@ export function detectSignatureInRegionFiltered(
     }
   }
 
-  const result = extractSignatureStrokes(gray, sw, sh, 80, 200);
+  const result = extractSignatureStrokes(gray, sw, sh, LINE_KERNEL, Math.min(MIN_AREA, 30));
 
   if (!result) return { x: rx, y: ry, width: rw, height: rh };
 
