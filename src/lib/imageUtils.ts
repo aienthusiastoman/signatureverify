@@ -145,36 +145,29 @@ function neutralizeRegion(
   return out;
 }
 
-function integralImage(gray: Uint8Array, w: number, h: number): Int32Array {
-  const integral = new Int32Array((w + 1) * (h + 1));
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      integral[(y + 1) * (w + 1) + (x + 1)] =
-        gray[y * w + x] +
-        integral[y * (w + 1) + (x + 1)] +
-        integral[(y + 1) * (w + 1) + x] -
-        integral[y * (w + 1) + x];
-    }
-  }
-  return integral;
-}
+function otsuThresholdGray(gray: Uint8Array, n: number): Uint8Array {
+  const hist = new Int32Array(256);
+  for (let i = 0; i < n; i++) hist[gray[i]]++;
 
-function adaptiveThresholdGray(gray: Uint8Array, w: number, h: number, blockSize: number, C: number): Uint8Array {
-  const integral = integralImage(gray, w, h);
-  const half = Math.floor(blockSize / 2);
-  const result = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const x1 = Math.max(0, x - half), y1 = Math.max(0, y - half);
-      const x2 = Math.min(w - 1, x + half), y2 = Math.min(h - 1, y + half);
-      const area = (x2 - x1 + 1) * (y2 - y1 + 1);
-      const sum =
-        integral[(y2 + 1) * (w + 1) + (x2 + 1)] -
-        integral[y1 * (w + 1) + (x2 + 1)] -
-        integral[(y2 + 1) * (w + 1) + x1] +
-        integral[y1 * (w + 1) + x1];
-      result[y * w + x] = gray[y * w + x] < sum / area - C ? 255 : 0;
-    }
+  let sumAll = 0;
+  for (let i = 0; i < 256; i++) sumAll += i * hist[i];
+
+  let sumB = 0, wB = 0, maxVar = 0, threshold = 128;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (wB === 0) continue;
+    const wF = n - wB;
+    if (wF === 0) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sumAll - sumB) / wF;
+    const varBetween = wB * wF * (mB - mF) * (mB - mF);
+    if (varBetween > maxVar) { maxVar = varBetween; threshold = t; }
+  }
+
+  const result = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    result[i] = gray[i] <= threshold ? 255 : 0;
   }
   return result;
 }
@@ -277,10 +270,10 @@ export function extractSignatureStrokes(
   gray: Uint8Array,
   w: number,
   h: number,
-  lineKernelLen = 80,
-  minArea = 800
+  lineKernelLen = 29,
+  minArea = 50
 ): { cleaned: Uint8Array; area: number } | null {
-  const thresh = adaptiveThresholdGray(gray, w, h, 31, 15);
+  const thresh = otsuThresholdGray(gray, w * h);
 
   const hLines = morphOpenH(thresh, w, h, lineKernelLen);
   subtractBin(thresh, hLines);
@@ -288,11 +281,14 @@ export function extractSignatureStrokes(
   const vLines = morphOpenV(thresh, w, h, lineKernelLen);
   subtractBin(thresh, vLines);
 
-  const area = extractLargestComponent(thresh, w, h);
+  let totalArea = 0;
+  for (let i = 0; i < w * h; i++) { if (thresh[i] > 0) totalArea++; }
 
-  if (area < minArea) return null;
+  if (totalArea < minArea) return null;
 
-  return { cleaned: thresh, area };
+  extractLargestComponent(thresh, w, h);
+
+  return { cleaned: thresh, area: totalArea };
 }
 
 const RENDER_SCALE = 2.0;
@@ -300,7 +296,7 @@ const RENDER_DPI = 72 * RENDER_SCALE;
 const PYTHON_DPI = 400;
 const DPI_RATIO = RENDER_DPI / PYTHON_DPI;
 export const LINE_KERNEL = Math.max(10, Math.round(80 * DPI_RATIO));
-export const MIN_AREA = Math.max(30, Math.round(800 * DPI_RATIO * DPI_RATIO));
+export const MIN_AREA = 50;
 
 export async function findPageBySignatureBlob(
   file: File,

@@ -74,7 +74,7 @@ export function detectSignatureInRegionFiltered(
     }
   }
 
-  const result = extractSignatureStrokes(gray, sw, sh, LINE_KERNEL, Math.min(MIN_AREA, 30));
+  const result = extractSignatureStrokes(gray, sw, sh, LINE_KERNEL, 30);
 
   if (!result) return { x: rx, y: ry, width: rw, height: rh };
 
