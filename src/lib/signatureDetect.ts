@@ -1,4 +1,5 @@
 import type { MaskRect } from '../types';
+import { extractSignatureStrokes } from './imageUtils';
 
 export function autoDetectSignature(canvas: HTMLCanvasElement): MaskRect {
   const ctx = canvas.getContext('2d')!;
@@ -65,53 +66,30 @@ export function detectSignatureInRegionFiltered(
   const sw = imgData.width;
   const sh = imgData.height;
 
-  const dark = new Uint8Array(sw * sh);
+  const gray = new Uint8Array(sw * sh);
   for (let y = 0; y < sh; y++) {
     for (let x = 0; x < sw; x++) {
       const i = (y * sw + x) * 4;
-      dark[y * sw + x] = (d[i] + d[i + 1] + d[i + 2]) / 3 < 150 ? 1 : 0;
+      gray[y * sw + x] = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
     }
   }
 
-  const H_LINE = sw * 0.5;
-  for (let y = 0; y < sh; y++) {
-    let run = 0, maxRun = 0;
-    for (let x = 0; x < sw; x++) {
-      run = dark[y * sw + x] ? run + 1 : 0;
-      if (run > maxRun) maxRun = run;
-    }
-    if (maxRun >= H_LINE) {
-      for (let x = 0; x < sw; x++) dark[y * sw + x] = 0;
-    }
-  }
+  const result = extractSignatureStrokes(gray, sw, sh, 80, 200);
 
-  const V_LINE = sh * 0.5;
-  for (let x = 0; x < sw; x++) {
-    let run = 0, maxRun = 0;
-    for (let y = 0; y < sh; y++) {
-      run = dark[y * sw + x] ? run + 1 : 0;
-      if (run > maxRun) maxRun = run;
-    }
-    if (maxRun >= V_LINE) {
-      for (let y = 0; y < sh; y++) dark[y * sw + x] = 0;
-    }
-  }
+  if (!result) return { x: rx, y: ry, width: rw, height: rh };
 
+  const cleaned = result.cleaned;
   let minX = sw, minY = sh, maxX = 0, maxY = 0;
-  let found = false;
   for (let y = 0; y < sh; y++) {
     for (let x = 0; x < sw; x++) {
-      if (dark[y * sw + x]) {
+      if (cleaned[y * sw + x] > 0) {
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
         if (y > maxY) maxY = y;
-        found = true;
       }
     }
   }
-
-  if (!found) return { x: rx, y: ry, width: sw, height: sh };
 
   const PAD = 20;
   const absX = Math.max(0, rx + minX - PAD);

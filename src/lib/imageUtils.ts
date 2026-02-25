@@ -231,85 +231,120 @@ function adaptiveThresholdGray(gray: Uint8Array, w: number, h: number, blockSize
   return result;
 }
 
-function removeLongRunsH(bin: Uint8Array, w: number, h: number, minLen: number): void {
+function morphOpenH(bin: Uint8Array, w: number, h: number, kernelW: number): Uint8Array {
+  const eroded = new Uint8Array(w * h);
+  const half = Math.floor(kernelW / 2);
   for (let y = 0; y < h; y++) {
-    let runStart = 0, run = 0;
-    for (let x = 0; x <= w; x++) {
-      if (x < w && bin[y * w + x] > 0) {
-        if (run === 0) runStart = x;
-        run++;
-      } else {
-        if (run >= minLen) for (let rx = runStart; rx < runStart + run; rx++) bin[y * w + rx] = 0;
-        run = 0;
+    for (let x = 0; x < w; x++) {
+      let allSet = true;
+      for (let dx = -half; dx <= half; dx++) {
+        const nx = x + dx;
+        if (nx < 0 || nx >= w || bin[y * w + nx] === 0) { allSet = false; break; }
+      }
+      eroded[y * w + x] = allSet ? 255 : 0;
+    }
+  }
+  const dilated = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (eroded[y * w + x] === 0) continue;
+      for (let dx = -half; dx <= half; dx++) {
+        const nx = x + dx;
+        if (nx >= 0 && nx < w) dilated[y * w + nx] = 255;
       }
     }
   }
+  return dilated;
 }
 
-function removeLongRunsV(bin: Uint8Array, w: number, h: number, minLen: number): void {
-  for (let x = 0; x < w; x++) {
-    let runStart = 0, run = 0;
-    for (let y = 0; y <= h; y++) {
-      if (y < h && bin[y * w + x] > 0) {
-        if (run === 0) runStart = y;
-        run++;
-      } else {
-        if (run >= minLen) for (let ry = runStart; ry < runStart + run; ry++) bin[ry * w + x] = 0;
-        run = 0;
+function morphOpenV(bin: Uint8Array, w: number, h: number, kernelH: number): Uint8Array {
+  const eroded = new Uint8Array(w * h);
+  const half = Math.floor(kernelH / 2);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let allSet = true;
+      for (let dy = -half; dy <= half; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h || bin[ny * w + x] === 0) { allSet = false; break; }
+      }
+      eroded[y * w + x] = allSet ? 255 : 0;
+    }
+  }
+  const dilated = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (eroded[y * w + x] === 0) continue;
+      for (let dy = -half; dy <= half; dy++) {
+        const ny = y + dy;
+        if (ny >= 0 && ny < h) dilated[ny * w + x] = 255;
       }
     }
   }
+  return dilated;
 }
 
-function removeSmallAndTextComponents(
-  bin: Uint8Array,
-  w: number,
-  h: number,
-  minArea: number
-): void {
-  const visited = new Uint8Array(w * h);
+function subtractBin(src: Uint8Array, mask: Uint8Array): void {
+  for (let i = 0; i < src.length; i++) {
+    if (mask[i] > 0) src[i] = 0;
+  }
+}
+
+function extractLargestComponent(bin: Uint8Array, w: number, h: number): number {
+  const labels = new Int32Array(w * h);
+  let labelId = 0;
+  let bestLabel = -1;
+  let bestArea = 0;
+
   for (let i = 0; i < w * h; i++) {
-    if (bin[i] === 0 || visited[i]) continue;
+    if (bin[i] === 0 || labels[i] !== 0) continue;
+    labelId++;
     const stack = [i];
-    visited[i] = 1;
-    const pixels: number[] = [];
-    let bxMin = w, bxMax = 0, byMin = h, byMax = 0;
+    labels[i] = labelId;
+    let area = 0;
     while (stack.length > 0) {
       const idx = stack.pop()!;
-      pixels.push(idx);
+      area++;
       const cx = idx % w, cy = Math.floor(idx / w);
-      if (cx < bxMin) bxMin = cx;
-      if (cx > bxMax) bxMax = cx;
-      if (cy < byMin) byMin = cy;
-      if (cy > byMax) byMax = cy;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as [number, number][]) {
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]] as [number, number][]) {
         const nx = cx + dx, ny = cy + dy;
         if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
         const nidx = ny * w + nx;
-        if (bin[nidx] === 0 || visited[nidx]) continue;
-        visited[nidx] = 1;
+        if (bin[nidx] === 0 || labels[nidx] !== 0) continue;
+        labels[nidx] = labelId;
         stack.push(nidx);
       }
     }
-    const area = pixels.length;
-    const bbW = bxMax - bxMin + 1;
-    const bbH = byMax - byMin + 1;
-    const isSmall = area < minArea;
-    const isTextLine = bbW > w * 0.35 && bbH < h * 0.08;
-    const isNarrowColumn = bbH > h * 0.35 && bbW < w * 0.08;
-    const isTinyChar = bbH < h * 0.06 && bbW < w * 0.06;
-    if (isSmall || isTextLine || isNarrowColumn || isTinyChar) {
-      for (const idx of pixels) bin[idx] = 0;
-    }
+    if (area > bestArea) { bestArea = area; bestLabel = labelId; }
   }
+
+  if (bestLabel < 0) return 0;
+
+  for (let i = 0; i < w * h; i++) {
+    bin[i] = labels[i] === bestLabel ? 255 : 0;
+  }
+  return bestArea;
 }
 
-function countInkPixels(bin: Uint8Array): number {
-  let count = 0;
-  for (let i = 0; i < bin.length; i++) {
-    if (bin[i] > 0) count++;
-  }
-  return count;
+export function extractSignatureStrokes(
+  gray: Uint8Array,
+  w: number,
+  h: number,
+  lineKernelLen = 80,
+  minArea = 800
+): { cleaned: Uint8Array; area: number } | null {
+  const thresh = adaptiveThresholdGray(gray, w, h, 31, 15);
+
+  const hLines = morphOpenH(thresh, w, h, lineKernelLen);
+  subtractBin(thresh, hLines);
+
+  const vLines = morphOpenV(thresh, w, h, lineKernelLen);
+  subtractBin(thresh, vLines);
+
+  const area = extractLargestComponent(thresh, w, h);
+
+  if (area < minArea) return null;
+
+  return { cleaned: thresh, area };
 }
 
 export async function findPageBySignatureBlob(
@@ -321,11 +356,11 @@ export async function findPageBySignatureBlob(
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
   let bestPage = 1;
-  let bestInk = 0;
+  let bestArea = 0;
 
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: 1.5 });
+    const viewport = page.getViewport({ scale: 2.0 });
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(viewport.width);
     canvas.height = Math.round(viewport.height);
@@ -345,16 +380,9 @@ export async function findPageBySignatureBlob(
       gray[j] = Math.round(0.299 * d[j * 4] + 0.587 * d[j * 4 + 1] + 0.114 * d[j * 4 + 2]);
     }
 
-    const thresh = adaptiveThresholdGray(gray, cw, ch, 31, 15);
-    removeLongRunsH(thresh, cw, ch, Math.max(15, Math.round(cw * 0.25)));
-    removeLongRunsV(thresh, cw, ch, Math.max(15, Math.round(ch * 0.25)));
-
-    const minComponentArea = Math.max(60, Math.round(cw * ch * 0.002));
-    removeSmallAndTextComponents(thresh, cw, ch, minComponentArea);
-
-    const ink = countInkPixels(thresh);
-    if (ink > bestInk) {
-      bestInk = ink;
+    const result = extractSignatureStrokes(gray, cw, ch, 80, 800);
+    if (result && result.area > bestArea) {
+      bestArea = result.area;
       bestPage = i;
     }
   }
