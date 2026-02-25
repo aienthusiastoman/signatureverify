@@ -261,20 +261,29 @@ function removeLongRunsV(bin: Uint8Array, w: number, h: number, minLen: number):
   }
 }
 
-function largestBlobArea(bin: Uint8Array, w: number, h: number): number {
+function removeSmallAndTextComponents(
+  bin: Uint8Array,
+  w: number,
+  h: number,
+  minArea: number
+): void {
   const visited = new Uint8Array(w * h);
-  let maxArea = 0;
   for (let i = 0; i < w * h; i++) {
     if (bin[i] === 0 || visited[i]) continue;
     const stack = [i];
     visited[i] = 1;
-    let area = 0;
+    const pixels: number[] = [];
+    let bxMin = w, bxMax = 0, byMin = h, byMax = 0;
     while (stack.length > 0) {
       const idx = stack.pop()!;
-      area++;
-      const x = idx % w, y = Math.floor(idx / w);
+      pixels.push(idx);
+      const cx = idx % w, cy = Math.floor(idx / w);
+      if (cx < bxMin) bxMin = cx;
+      if (cx > bxMax) bxMax = cx;
+      if (cy < byMin) byMin = cy;
+      if (cy > byMax) byMax = cy;
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as [number, number][]) {
-        const nx = x + dx, ny = y + dy;
+        const nx = cx + dx, ny = cy + dy;
         if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
         const nidx = ny * w + nx;
         if (bin[nidx] === 0 || visited[nidx]) continue;
@@ -282,9 +291,25 @@ function largestBlobArea(bin: Uint8Array, w: number, h: number): number {
         stack.push(nidx);
       }
     }
-    if (area > maxArea) maxArea = area;
+    const area = pixels.length;
+    const bbW = bxMax - bxMin + 1;
+    const bbH = byMax - byMin + 1;
+    const isSmall = area < minArea;
+    const isTextLine = bbW > w * 0.35 && bbH < h * 0.08;
+    const isNarrowColumn = bbH > h * 0.35 && bbW < w * 0.08;
+    const isTinyChar = bbH < h * 0.06 && bbW < w * 0.06;
+    if (isSmall || isTextLine || isNarrowColumn || isTinyChar) {
+      for (const idx of pixels) bin[idx] = 0;
+    }
   }
-  return maxArea;
+}
+
+function countInkPixels(bin: Uint8Array): number {
+  let count = 0;
+  for (let i = 0; i < bin.length; i++) {
+    if (bin[i] > 0) count++;
+  }
+  return count;
 }
 
 export async function findPageBySignatureBlob(
@@ -296,21 +321,21 @@ export async function findPageBySignatureBlob(
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
   let bestPage = 1;
-  let bestArea = 0;
+  let bestInk = 0;
 
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: 1.0 });
+    const viewport = page.getViewport({ scale: 1.5 });
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(viewport.width);
     canvas.height = Math.round(viewport.height);
     await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
 
     const pw = canvas.width, ph = canvas.height;
-    const cx = Math.round(maskFrac.x * pw);
-    const cy = Math.round(maskFrac.y * ph);
-    const cw = Math.max(1, Math.round(maskFrac.w * pw));
-    const ch = Math.max(1, Math.round(maskFrac.h * ph));
+    const cx = Math.max(0, Math.min(pw - 1, Math.round(maskFrac.x * pw)));
+    const cy = Math.max(0, Math.min(ph - 1, Math.round(maskFrac.y * ph)));
+    const cw = Math.max(1, Math.min(pw - cx, Math.round(maskFrac.w * pw)));
+    const ch = Math.max(1, Math.min(ph - cy, Math.round(maskFrac.h * ph)));
 
     const imgData = canvas.getContext('2d')!.getImageData(cx, cy, cw, ch);
     const d = imgData.data;
@@ -321,12 +346,15 @@ export async function findPageBySignatureBlob(
     }
 
     const thresh = adaptiveThresholdGray(gray, cw, ch, 31, 15);
-    removeLongRunsH(thresh, cw, ch, Math.max(20, Math.round(cw * 0.4)));
-    removeLongRunsV(thresh, cw, ch, Math.max(20, Math.round(ch * 0.4)));
+    removeLongRunsH(thresh, cw, ch, Math.max(15, Math.round(cw * 0.25)));
+    removeLongRunsV(thresh, cw, ch, Math.max(15, Math.round(ch * 0.25)));
 
-    const area = largestBlobArea(thresh, cw, ch);
-    if (area > bestArea) {
-      bestArea = area;
+    const minComponentArea = Math.max(60, Math.round(cw * ch * 0.002));
+    removeSmallAndTextComponents(thresh, cw, ch, minComponentArea);
+
+    const ink = countInkPixels(thresh);
+    if (ink > bestInk) {
+      bestInk = ink;
       bestPage = i;
     }
   }

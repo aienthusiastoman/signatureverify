@@ -84,15 +84,24 @@ function CompareToolContent() {
 
     let foundPage: number | null = null;
 
-    if (mask.pageThumbnailMaskFrac) {
-      foundPage = await findPageBySignatureBlob(file.file, mask.pageThumbnailMaskFrac);
+    let frac = mask.pageThumbnailMaskFrac;
+    if (!frac && mask.width > 5 && mask.height > 5) {
+      const refCanvas = await renderPdfPageToCanvas(file.file, 1);
+      const rw = refCanvas.width, rh = refCanvas.height;
+      if (rw > 0 && rh > 0) {
+        frac = { x: mask.x / rw, y: mask.y / rh, w: mask.width / rw, h: mask.height / rh };
+      }
     }
 
-    if (foundPage === null && mask.anchorText?.trim()) {
+    if (frac) {
+      foundPage = await findPageBySignatureBlob(file.file, frac);
+    }
+
+    if (mask.anchorText?.trim()) {
       const textFound = await findPageByAnchorText(file.file, mask.anchorText, mask);
       if (textFound !== null) {
         foundPage = textFound;
-      } else {
+      } else if (!frac) {
         return { mask, warning: `Could not locate "${mask.anchorText}" in ${file.file.name}. Using page ${mask.page ?? 1}.` };
       }
     }
