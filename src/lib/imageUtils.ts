@@ -45,58 +45,6 @@ export async function renderPdfToCanvas(file: File): Promise<HTMLCanvasElement> 
   return renderPdfPageToCanvas(file, 1);
 }
 
-function getRegionInkRatio(
-  canvas: HTMLCanvasElement,
-  mask: { x: number; y: number; width: number; height: number }
-): number {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return 0;
-  const x = Math.max(0, Math.round(mask.x));
-  const y = Math.max(0, Math.round(mask.y));
-  const w = Math.min(canvas.width - x, Math.max(1, Math.round(mask.width)));
-  const h = Math.min(canvas.height - y, Math.max(1, Math.round(mask.height)));
-  if (w <= 0 || h <= 0) return 0;
-  const data = ctx.getImageData(x, y, w, h).data;
-  let dark = 0;
-  for (let i = 0; i < data.length; i += 4) {
-    if ((data[i] + data[i + 1] + data[i + 2]) / 3 < 180) dark++;
-  }
-  return dark / (w * h);
-}
-
-function countInkBands(
-  canvas: HTMLCanvasElement,
-  mask: { x: number; y: number; width: number; height: number },
-  sliceHeight = 12
-): number {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return 1;
-  const x = Math.max(0, Math.round(mask.x));
-  const y = Math.max(0, Math.round(mask.y));
-  const w = Math.min(canvas.width - x, Math.max(1, Math.round(mask.width)));
-  const h = Math.min(canvas.height - y, Math.max(1, Math.round(mask.height)));
-  let bands = 0;
-  for (let sy = 0; sy < h; sy += sliceHeight) {
-    const sh = Math.min(sliceHeight, h - sy);
-    if (sh <= 0) break;
-    const data = ctx.getImageData(x, y + sy, w, sh).data;
-    let dark = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      if ((data[i] + data[i + 1] + data[i + 2]) / 3 < 180) dark++;
-    }
-    if (dark / (w * sh) >= 0.005) bands++;
-  }
-  return Math.max(1, bands);
-}
-
-function regionHasInkContent(
-  canvas: HTMLCanvasElement,
-  mask: { x: number; y: number; width: number; height: number },
-  minDarkRatio = 0.002
-): boolean {
-  return getRegionInkRatio(canvas, mask) >= minDarkRatio;
-}
-
 export function captureStructuralThumbnail(
   canvas: HTMLCanvasElement,
   naturalMask?: { x: number; y: number; width: number; height: number },
@@ -429,22 +377,28 @@ export async function findPageByAnchorText(
   };
 
   const pickBestByInk = async (pages: number[]): Promise<number> => {
-    const SIGNATURE_MIN = 0.004;
-    const entries: { page: number; maskRatio: number; score: number }[] = [];
+    let bestPage = pages[0];
+    let bestArea = 0;
     for (const p of pages) {
       const canvas = await renderPage(p);
-      const maskRatio = getRegionInkRatio(canvas, mask!);
-      const fullPage = { x: 0, y: 0, width: canvas.width, height: canvas.height };
-      const pageRatio = getRegionInkRatio(canvas, fullPage);
-      const bands = countInkBands(canvas, mask!);
-      // Reward: concentrated mask ink (high maskRatio)
-      // Penalise: dense pages (high pageRatio) and ink spread across many bands (high bands)
-      const score = maskRatio >= SIGNATURE_MIN ? maskRatio / (pageRatio * bands + 0.01) : 0;
-      entries.push({ page: p, maskRatio, score });
+      const pw = canvas.width, ph = canvas.height;
+      const cx = Math.max(0, Math.min(pw - 1, Math.round(mask!.x)));
+      const cy = Math.max(0, Math.min(ph - 1, Math.round(mask!.y)));
+      const cw = Math.max(1, Math.min(pw - cx, Math.round(mask!.width)));
+      const ch = Math.max(1, Math.min(ph - cy, Math.round(mask!.height)));
+      const imgData = canvas.getContext('2d')!.getImageData(cx, cy, cw, ch);
+      const d = imgData.data;
+      const gray = new Uint8Array(cw * ch);
+      for (let j = 0; j < cw * ch; j++) {
+        gray[j] = Math.round(0.299 * d[j * 4] + 0.587 * d[j * 4 + 1] + 0.114 * d[j * 4 + 2]);
+      }
+      const result = extractSignatureStrokes(gray, cw, ch, 80, 800);
+      if (result && result.area > bestArea) {
+        bestArea = result.area;
+        bestPage = p;
+      }
     }
-    const candidates = entries.filter(e => e.maskRatio >= SIGNATURE_MIN && e.score > 0);
-    if (candidates.length === 0) return pages[0];
-    return candidates.reduce((a, b) => a.score > b.score ? a : b).page;
+    return bestPage;
   };
 
   if (matchingPages.length === 0) {

@@ -82,11 +82,10 @@ function CompareToolContent() {
   const resolvePageForMask = async (file: UploadedFile, mask: MaskRect): Promise<{ mask: MaskRect; warning?: string }> => {
     if (file.type !== 'pdf') return { mask };
 
-    let foundPage: number | null = null;
-
     let frac = mask.pageThumbnailMaskFrac;
     if (!frac && mask.width > 5 && mask.height > 5) {
-      const refCanvas = await renderPdfPageToCanvas(file.file, 1);
+      const refPage = mask.page ?? 1;
+      const refCanvas = await renderPdfPageToCanvas(file.file, refPage);
       const rw = refCanvas.width, rh = refCanvas.height;
       if (rw > 0 && rh > 0) {
         frac = { x: mask.x / rw, y: mask.y / rh, w: mask.width / rw, h: mask.height / rh };
@@ -94,20 +93,16 @@ function CompareToolContent() {
     }
 
     if (frac) {
-      foundPage = await findPageBySignatureBlob(file.file, frac);
+      const foundPage = await findPageBySignatureBlob(file.file, frac);
+      return { mask: { ...mask, page: foundPage } };
     }
 
     if (mask.anchorText?.trim()) {
       const textFound = await findPageByAnchorText(file.file, mask.anchorText, mask);
       if (textFound !== null) {
-        foundPage = textFound;
-      } else if (!frac) {
-        return { mask, warning: `Could not locate "${mask.anchorText}" in ${file.file.name}. Using page ${mask.page ?? 1}.` };
+        return { mask: { ...mask, page: textFound } };
       }
-    }
-
-    if (foundPage !== null) {
-      return { mask: { ...mask, page: foundPage } };
+      return { mask, warning: `Could not locate "${mask.anchorText}" in ${file.file.name}. Using page ${mask.page ?? 1}.` };
     }
 
     return { mask };
