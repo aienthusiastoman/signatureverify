@@ -24,7 +24,7 @@ import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { useSignatureProcess } from './hooks/useSignatureProcess';
 import { extractRegion, renderPdfPageToCanvas, findPageByAnchorText, findPageBySignatureBlob } from './lib/imageUtils';
 import { detectSignatureInRegionFiltered } from './lib/signatureDetect';
-import type { UploadedFile, MaskRect, SignatureRegion, AppStep, AppView } from './types';
+import type { UploadedFile, MaskRect, SignatureRegion, AppStep, AppView, CompareMode } from './types';
 
 async function renderPageCanvas(file: UploadedFile, page: number): Promise<HTMLCanvasElement> {
   if (file.type === 'pdf') return renderPdfPageToCanvas(file.file, page);
@@ -55,6 +55,7 @@ function CompareToolContent() {
   const [activeDoc, setActiveDoc] = useState<1 | 2>(1);
   const [extracting, setExtracting] = useState(false);
   const [anchorWarning, setAnchorWarning] = useState<string | null>(null);
+  const [compareMode, setCompareMode] = useState<CompareMode>('lenient');
 
   const canvas1Ref = useRef<HTMLCanvasElement | null>(null);
   const canvas2Ref = useRef<HTMLCanvasElement | null>(null);
@@ -156,7 +157,7 @@ function CompareToolContent() {
   const handleProcess = async () => {
     if (!file1 || !file2 || !region1 || !region2) return;
     setStep('results');
-    await processSignatures(file1.file, file2.file, region1, region2);
+    await processSignatures(file1.file, file2.file, region1, region2, 1.0, compareMode);
   };
 
   const handleReset = () => { clearFile1(); clearFile2(); setStep('upload'); setAnchorWarning(null); };
@@ -288,6 +289,34 @@ function CompareToolContent() {
             label1={`Document 1${mask1?.page ? ` — Page ${mask1.page}` : ''} — ${file1?.file.name ?? ''}`}
             label2={`Document 2${mask2?.page ? ` — Page ${mask2.page}` : ''} — ${file2?.file.name ?? ''}`}
           />
+
+          <div className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4 space-y-2">
+            <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide">Comparison Mode</p>
+            <div className="flex items-stretch gap-3">
+              <button
+                onClick={() => setCompareMode('lenient')}
+                className={`flex-1 rounded-xl px-4 py-3 text-left transition-all border ${
+                  compareMode === 'lenient'
+                    ? 'bg-teal-500/15 border-teal-500/50 text-white'
+                    : 'bg-slate-800/60 border-slate-700/40 text-slate-400 hover:text-white hover:border-slate-600'
+                }`}
+              >
+                <p className="font-bold text-sm">Lenient</p>
+                <p className="text-xs opacity-70 mt-0.5">Overall shape similarity — tolerates ink variation and background noise</p>
+              </button>
+              <button
+                onClick={() => setCompareMode('strict')}
+                className={`flex-1 rounded-xl px-4 py-3 text-left transition-all border ${
+                  compareMode === 'strict'
+                    ? 'bg-amber-500/15 border-amber-500/50 text-white'
+                    : 'bg-slate-800/60 border-slate-700/40 text-slate-400 hover:text-white hover:border-slate-600'
+                }`}
+              >
+                <p className="font-bold text-sm">Strict</p>
+                <p className="text-xs opacity-70 mt-0.5">Precise curve matching — penalises stroke position and direction differences</p>
+              </button>
+            </div>
+          </div>
 
           <div className="flex gap-3">
             <button

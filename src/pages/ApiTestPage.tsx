@@ -6,6 +6,7 @@ import { renderPdfPageToCanvas, canvasToBlob, findPageByAnchorText, findPageBySi
 import type { SavedTemplate, MaskRect } from '../types';
 
 type Language = 'curl' | 'javascript' | 'python' | 'php' | 'go';
+type CompareMode = 'lenient' | 'strict';
 
 const LANG_LABELS: Record<Language, string> = {
   curl: 'cURL',
@@ -45,7 +46,7 @@ function maskToInput(m: MaskRect): MaskInput {
   };
 }
 
-function buildCode(lang: Language, file1Name: string, file2Name: string, mask1: MaskInput, mask2: MaskInput, keyLabel: string, templateId?: string): string {
+function buildCode(lang: Language, file1Name: string, file2Name: string, mask1: MaskInput, mask2: MaskInput, keyLabel: string, mode: CompareMode, templateId?: string): string {
   const m1 = `{"x":${mask1.x},"y":${mask1.y},"width":${mask1.width},"height":${mask1.height},"page":${mask1.page}}`;
   const m2 = `{"x":${mask2.x},"y":${mask2.y},"width":${mask2.width},"height":${mask2.height},"page":${mask2.page}}`;
   const templateLine = templateId ? `\n    "template_id": "${templateId}",` : '';
@@ -59,7 +60,8 @@ function buildCode(lang: Language, file1Name: string, file2Name: string, mask1: 
     "file1_name": "${file1Name}",
     "file2_name": "${file2Name}",
     "mask1": ${m1},
-    "mask2": ${m2}
+    "mask2": ${m2},
+    "mode": "${mode}"
   }'`;
 
   if (lang === 'javascript') return `const toB64 = f => new Promise(r => {
@@ -81,10 +83,11 @@ const res = await fetch('${ENDPOINT}', {
     file2_name: '${file2Name}',
     mask1: ${m1},
     mask2: ${m2},
+    mode: '${mode}',
   }),
 });
 const data = await res.json();
-console.log(data.confidenceScore);`;
+console.log(data.confidenceScore, data.mode);`;
 
   if (lang === 'python') return `import requests, base64
 
@@ -105,6 +108,7 @@ res = requests.post(
         'file2_name': '${file2Name}',
         'mask1': ${m1},
         'mask2': ${m2},
+        'mode': '${mode}',
     }
 )
 print(res.json())`;
@@ -117,6 +121,7 @@ $payload = json_encode([${templateId ? `\n    'template_id' => '${templateId}',`
     'file2_name'   => '${file2Name}',
     'mask1' => json_decode('${m1}', true),
     'mask2' => json_decode('${m2}', true),
+    'mode'  => '${mode}',
 ]);
 $ch = curl_init('${ENDPOINT}');
 curl_setopt_array($ch, [
@@ -149,6 +154,7 @@ func main() {
         "file2_name": "${file2Name}",
         "mask1": map[string]int{"x":${mask1.x},"y":${mask1.y},"width":${mask1.width},"height":${mask1.height},"page":${mask1.page}},
         "mask2": map[string]int{"x":${mask2.x},"y":${mask2.y},"width":${mask2.width},"height":${mask2.height},"page":${mask2.page}},
+        "mode": "${mode}",
     })
     req, _ := http.NewRequest("POST", "${ENDPOINT}", bytes.NewReader(payload))
     req.Header.Set("Authorization", "Bearer ${keyLabel}")
@@ -200,6 +206,7 @@ export default function ApiTestPage() {
   const [response, setResponse] = useState<string | null>(null);
   const [responseOk, setResponseOk] = useState(true);
   const [lang, setLang] = useState<Language>('curl');
+  const [compareMode, setCompareMode] = useState<CompareMode>('lenient');
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedResponse, setCopiedResponse] = useState(false);
 
@@ -304,6 +311,7 @@ export default function ApiTestPage() {
         mask2: { x: +activeMask2.x, y: +activeMask2.y, width: +activeMask2.width, height: +activeMask2.height, page: page2 },
         matched_page1: page1,
         matched_page2: page2,
+        mode: compareMode,
       };
 
       if (useTemplate && selectedTemplateId) {
@@ -331,7 +339,7 @@ export default function ApiTestPage() {
   };
 
   const templateIdForCode = useTemplate && selectedTemplateId ? selectedTemplateId : undefined;
-  const codeExample = buildCode(lang, file1?.name || 'document1.pdf', file2?.name || 'document2.pdf', activeMask1, activeMask2, keyLabel, templateIdForCode);
+  const codeExample = buildCode(lang, file1?.name || 'document1.pdf', file2?.name || 'document2.pdf', activeMask1, activeMask2, keyLabel, compareMode, templateIdForCode);
 
   const copyCode = () => { navigator.clipboard.writeText(codeExample); setCopiedCode(true); setTimeout(() => setCopiedCode(false), 2000); };
   const copyResponse = () => { if (!response) return; navigator.clipboard.writeText(response); setCopiedResponse(true); setTimeout(() => setCopiedResponse(false), 2000); };
@@ -476,6 +484,34 @@ export default function ApiTestPage() {
                   <MaskFields label="Region 2 — Document 2 (px)" value={mask2} onChange={setMask2} />
                 </div>
               )}
+            </div>
+
+            <div className="pt-1 border-t border-slate-700/40 space-y-2">
+              <label className="text-slate-400 text-xs font-semibold uppercase tracking-wide block">Comparison Mode</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setCompareMode('lenient')}
+                  className={`flex-1 px-3 py-2.5 rounded-xl text-xs font-semibold text-left transition-all border ${
+                    compareMode === 'lenient'
+                      ? 'bg-teal-500/15 border-teal-500/50 text-white'
+                      : 'bg-slate-800/60 border-slate-700/40 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <p className="font-bold">Lenient</p>
+                  <p className="opacity-60 mt-0.5 font-normal">Overall shape match</p>
+                </button>
+                <button
+                  onClick={() => setCompareMode('strict')}
+                  className={`flex-1 px-3 py-2.5 rounded-xl text-xs font-semibold text-left transition-all border ${
+                    compareMode === 'strict'
+                      ? 'bg-amber-500/15 border-amber-500/50 text-white'
+                      : 'bg-slate-800/60 border-slate-700/40 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <p className="font-bold">Strict</p>
+                  <p className="opacity-60 mt-0.5 font-normal">Precise curve matching</p>
+                </button>
+              </div>
             </div>
 
             <button

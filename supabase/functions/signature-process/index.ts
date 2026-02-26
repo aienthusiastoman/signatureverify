@@ -247,32 +247,50 @@ function dilate3(bin: Uint8Array, w: number, h: number): Uint8Array {
   return out;
 }
 
-function tryExtractBlob(gray: Uint8Array, w: number, h: number, C: number): { pixels: Uint8Array; area: number } | null {
-  const thresh = adaptiveThresholdGaussian(gray, w, h, 31, C);
+function inwardCropGray(gray: Uint8Array, w: number, h: number, margin: number): { gray: Uint8Array; w: number; h: number } {
+  const x0 = Math.min(margin, Math.floor(w / 4));
+  const y0 = Math.min(margin, Math.floor(h / 4));
+  const x1 = w - x0;
+  const y1 = h - y0;
+  const nw = x1 - x0;
+  const nh = y1 - y0;
+  const out = new Uint8Array(nw * nh);
+  for (let y = 0; y < nh; y++) {
+    for (let x = 0; x < nw; x++) {
+      out[y * nw + x] = gray[(y + y0) * w + (x + x0)];
+    }
+  }
+  return { gray: out, w: nw, h: nh };
+}
 
-  const hLines = morphOpenH(thresh, w, h, 80);
+function tryExtractBlob(gray: Uint8Array, w: number, h: number, C: number): { pixels: Uint8Array; area: number; w: number; h: number } | null {
+  const cropped = inwardCropGray(gray, w, h, 6);
+  const cg = cropped.gray, cw = cropped.w, ch = cropped.h;
+
+  const thresh = adaptiveThresholdGaussian(cg, cw, ch, 31, C);
+
+  const hLines = morphOpenH(thresh, cw, ch, Math.max(20, Math.floor(cw * 0.15)));
   subtractBin(thresh, hLines);
-  const vLines = morphOpenV(thresh, w, h, 80);
+  const vLines = morphOpenV(thresh, cw, ch, Math.max(20, Math.floor(ch * 0.15)));
   subtractBin(thresh, vLines);
 
-  removeSmallBlobsInPlace(thresh, w, h, 20);
+  removeSmallBlobsInPlace(thresh, cw, ch, 20);
 
-  const dilated = dilate3(thresh, w, h);
-  const { pixels: blobMask, area: blobArea } = extractLargestBlob(dilated, w, h);
+  const dilated = dilate3(thresh, cw, ch);
+  const { pixels: blobMask, area: blobArea } = extractLargestBlob(dilated, cw, ch);
   if (blobArea < 100) return null;
 
-  const totalPixels = w * h;
-  if (blobArea > totalPixels * 0.6) return null;
+  if (blobArea > cw * ch * 0.6) return null;
 
-  const result = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) {
+  const result = new Uint8Array(cw * ch);
+  for (let i = 0; i < cw * ch; i++) {
     result[i] = blobMask[i] > 0 ? thresh[i] : 0;
   }
   let actualArea = 0;
-  for (let i = 0; i < w * h; i++) if (result[i] > 0) actualArea++;
+  for (let i = 0; i < cw * ch; i++) if (result[i] > 0) actualArea++;
   if (actualArea < 50) return null;
 
-  return { pixels: result, area: actualArea };
+  return { pixels: result, area: actualArea, w: cw, h: ch };
 }
 
 function extractSignatureBlob(img: Jimp): { pixels: Uint8Array; w: number; h: number } | null {
@@ -283,7 +301,7 @@ function extractSignatureBlob(img: Jimp): { pixels: Uint8Array; w: number; h: nu
   if (!blob) blob = tryExtractBlob(gray, w, h, 20);
   if (!blob) return null;
 
-  return { pixels: blob.pixels, w, h };
+  return { pixels: blob.pixels, w: blob.w, h: blob.h };
 }
 
 function normalizeSignature(bin: Uint8Array, w: number, h: number, targetW = 600, targetH = 250): Uint8Array | null {
@@ -393,6 +411,44 @@ function curveProfileSimilarity(sig1: Uint8Array, sig2: Uint8Array, w: number, h
   return Math.max(0, corr) * 100;
 }
 
+function gridDensitySimilarity(img1: Uint8Array, img2: Uint8Array, w: number, h: number, cols = 10, rows = 4): number {
+  const cellW = w / cols;
+  const cellH = h / rows;
+  const d1 = new Float64Array(cols * rows);
+  const d2 = new Float64Array(cols * rows);
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x0 = Math.floor(c * cellW), x1 = Math.floor((c + 1) * cellW);
+      const y0 = Math.floor(r * cellH), y1 = Math.floor((r + 1) * cellH);
+      const cellPx = (x1 - x0) * (y1 - y0);
+      let ink1 = 0, ink2 = 0;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          if (img1[y * w + x] > 0) ink1++;
+          if (img2[y * w + x] > 0) ink2++;
+        }
+      }
+      const idx = r * cols + c;
+      d1[idx] = cellPx > 0 ? ink1 / cellPx : 0;
+      d2[idx] = cellPx > 0 ? ink2 / cellPx : 0;
+    }
+  }
+
+  const n = cols * rows;
+  let m1 = 0, m2 = 0;
+  for (let i = 0; i < n; i++) { m1 += d1[i]; m2 += d2[i]; }
+  m1 /= n; m2 /= n;
+
+  let num = 0, s1 = 0, s2 = 0;
+  for (let i = 0; i < n; i++) {
+    const a = d1[i] - m1, b = d2[i] - m2;
+    num += a * b; s1 += a * a; s2 += b * b;
+  }
+  const den = Math.sqrt(s1 * s2);
+  return den < 1e-10 ? 0 : Math.max(0, num / den) * 100;
+}
+
 function pixelSimilarity(img1: Uint8Array, img2: Uint8Array, n: number): number {
   let inter = 0, union = 0;
   for (let i = 0; i < n; i++) {
@@ -421,7 +477,7 @@ function dilate1(bin: Uint8Array, w: number, h: number): Uint8Array {
   return out;
 }
 
-async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer): Promise<number> {
+async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer, mode: 'lenient' | 'strict' = 'lenient'): Promise<number> {
   const raw1 = await Jimp.read(Buffer.from(buf1));
   const raw2 = await Jimp.read(Buffer.from(buf2));
   raw1.grayscale();
@@ -440,13 +496,19 @@ async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer): Promise<
   const skel2 = zhangSuenSkeleton(norm2, TARGET_W, TARGET_H);
 
   const curveScore = curveProfileSimilarity(skel1, skel2, TARGET_W, TARGET_H);
+  const gridScore = gridDensitySimilarity(norm1, norm2, TARGET_W, TARGET_H);
+
+  if (mode === 'strict') {
+    const iouScore = pixelSimilarity(skel1, skel2, TARGET_W * TARGET_H);
+    const rawScore = curveScore * 0.60 + iouScore * 0.30 + gridScore * 0.10;
+    return Math.min(100, Math.max(0, rawScore * 1.05));
+  }
 
   const dilSkel1 = dilate1(skel1, TARGET_W, TARGET_H);
   const dilSkel2 = dilate1(skel2, TARGET_W, TARGET_H);
   const iouScore = pixelSimilarity(dilSkel1, dilSkel2, TARGET_W * TARGET_H);
-
-  const rawScore = curveScore * 0.6 + iouScore * 0.4;
-  return Math.min(100, Math.max(0, rawScore * 1.25));
+  const rawScore = gridScore * 0.50 + iouScore * 0.30 + curveScore * 0.20;
+  return Math.min(100, Math.max(0, rawScore * 1.40));
 }
 
 async function cropImageToMask(
@@ -474,7 +536,8 @@ async function generatePDF(
   jobId: string,
   timestamp: string,
   matchedPage1?: number,
-  matchedPage2?: number
+  matchedPage2?: number,
+  mode: 'lenient' | 'strict' = 'lenient'
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const page = doc.addPage(PageSizes.A4);
@@ -559,18 +622,21 @@ async function generatePDF(
 
   const analysisY = docSectionY - 270;
   page.drawRectangle({ x: 30, y: analysisY - 90, width: width - 60, height: 80, color: cardBg, borderColor, borderWidth: 1 });
-  page.drawText("ANALYSIS METHODOLOGY", { x: 50, y: analysisY - 18, size: 9, font, color: muted });
+  const modeLabel = mode === 'strict' ? 'STRICT' : 'LENIENT';
+  const modeDesc = mode === 'strict'
+    ? 'Strict mode: curve-profile Pearson (60%) + skeleton IoU (30%) + grid density (10%). Boost ×1.05.'
+    : 'Lenient mode: grid density correlation (50%) + dilated skeleton IoU (30%) + curve profile (20%). Boost ×1.40.';
+  const thresholdDesc = mode === 'strict'
+    ? 'Thresholds: 0-59% Mismatch  |  60-79% Moderate Match  |  80-100% High Confidence Match'
+    : 'Thresholds: 0-49% Mismatch  |  50-74% Moderate Match  |  75-100% High Confidence Match';
+
+  page.drawText(`ANALYSIS METHODOLOGY  —  ${modeLabel} MODE`, { x: 50, y: analysisY - 18, size: 9, font, color: muted });
   page.drawText(
-    "Gaussian adaptive thresholding isolates ink strokes. Long lines removed via morphological opening.",
-    { x: 50, y: analysisY - 38, size: 8, font: fontReg, color: rgb(0.7, 0.77, 0.85) }
+    "Border-stripped adaptive thresholding + morphological line removal isolates ink strokes.",
+    { x: 50, y: analysisY - 35, size: 8, font: fontReg, color: rgb(0.7, 0.77, 0.85) }
   );
-  page.drawText(
-    "Signatures normalized to 600x250px and skeletonized (Zhang-Suen). Curve-profile Pearson correlation applied.",
-    { x: 50, y: analysisY - 52, size: 8, font: fontReg, color: rgb(0.7, 0.77, 0.85) }
-  );
-  page.drawText("Thresholds: 0-49% Mismatch  |  50-74% Moderate Match  |  75-100% High Confidence Match", {
-    x: 50, y: analysisY - 68, size: 8, font: fontReg, color: rgb(0.7, 0.77, 0.85)
-  });
+  page.drawText(modeDesc, { x: 50, y: analysisY - 48, size: 8, font: fontReg, color: rgb(0.7, 0.77, 0.85) });
+  page.drawText(thresholdDesc, { x: 50, y: analysisY - 63, size: 8, font: fontReg, color: rgb(0.7, 0.77, 0.85) });
 
   page.drawText("This report is generated automatically and should be reviewed by a qualified professional.", {
     x: width / 2 - 165, y: 20, size: 8, font: fontReg, color: rgb(0.4, 0.5, 0.6)
@@ -579,7 +645,7 @@ async function generatePDF(
   return doc.save();
 }
 
-async function resolveImageBuffers(formData: FormData): Promise<{ buf1: ArrayBuffer; buf2: ArrayBuffer; file1Name: string; file2Name: string; file1Path: string; file2Path: string; mask1Raw: string | null; mask2Raw: string | null; scaleFile2: number; matchedPage1: number | undefined; matchedPage2: number | undefined }> {
+async function resolveImageBuffers(formData: FormData): Promise<{ buf1: ArrayBuffer; buf2: ArrayBuffer; file1Name: string; file2Name: string; file1Path: string; file2Path: string; mask1Raw: string | null; mask2Raw: string | null; scaleFile2: number; matchedPage1: number | undefined; matchedPage2: number | undefined; mode: 'lenient' | 'strict' }> {
   const file1Name = (formData.get("file1_name") as string) || "document1";
   const file2Name = (formData.get("file2_name") as string) || "document2";
   const file1Path = (formData.get("file1_path") as string) || "";
@@ -591,6 +657,8 @@ async function resolveImageBuffers(formData: FormData): Promise<{ buf1: ArrayBuf
   const mp2 = formData.get("matched_page2") as string | null;
   const matchedPage1 = mp1 ? parseInt(mp1) : undefined;
   const matchedPage2 = mp2 ? parseInt(mp2) : undefined;
+  const modeRaw = (formData.get("mode") as string) || "lenient";
+  const mode: 'lenient' | 'strict' = modeRaw === 'strict' ? 'strict' : 'lenient';
 
   const sig1File = formData.get("signature1") as File | null;
   const sig2File = formData.get("signature2") as File | null;
@@ -611,10 +679,10 @@ async function resolveImageBuffers(formData: FormData): Promise<{ buf1: ArrayBuf
     throw new Error("Either signature files or base64-encoded files are required");
   }
 
-  return { buf1, buf2, file1Name, file2Name, file1Path, file2Path, mask1Raw, mask2Raw, scaleFile2, matchedPage1, matchedPage2 };
+  return { buf1, buf2, file1Name, file2Name, file1Path, file2Path, mask1Raw, mask2Raw, scaleFile2, matchedPage1, matchedPage2, mode };
 }
 
-async function resolveFromJson(body: Record<string, unknown>): Promise<{ buf1: ArrayBuffer; buf2: ArrayBuffer; file1Name: string; file2Name: string; file1Path: string; file2Path: string; mask1Raw: string | null; mask2Raw: string | null; scaleFile2: number; templateId: string | null; matchedPage1: number | undefined; matchedPage2: number | undefined }> {
+async function resolveFromJson(body: Record<string, unknown>): Promise<{ buf1: ArrayBuffer; buf2: ArrayBuffer; file1Name: string; file2Name: string; file1Path: string; file2Path: string; mask1Raw: string | null; mask2Raw: string | null; scaleFile2: number; templateId: string | null; matchedPage1: number | undefined; matchedPage2: number | undefined; mode: 'lenient' | 'strict' }> {
   const file1Name = (body.file1_name as string) || "document1";
   const file2Name = (body.file2_name as string) || "document2";
   const file1Path = (body.file1_path as string) || "";
@@ -625,6 +693,7 @@ async function resolveFromJson(body: Record<string, unknown>): Promise<{ buf1: A
   const templateId = (body.template_id as string) || null;
   const matchedPage1 = body.matched_page1 !== undefined ? Number(body.matched_page1) : undefined;
   const matchedPage2 = body.matched_page2 !== undefined ? Number(body.matched_page2) : undefined;
+  const mode: 'lenient' | 'strict' = body.mode === 'strict' ? 'strict' : 'lenient';
 
   const b64f1 = body.file1_base64 as string | null;
   const b64f2 = body.file2_base64 as string | null;
@@ -634,7 +703,7 @@ async function resolveFromJson(body: Record<string, unknown>): Promise<{ buf1: A
   const buf1 = Buffer.from(b64f1, "base64").buffer;
   const buf2 = Buffer.from(b64f2, "base64").buffer;
 
-  return { buf1, buf2, file1Name, file2Name, file1Path, file2Path, mask1Raw, mask2Raw, scaleFile2, templateId, matchedPage1, matchedPage2 };
+  return { buf1, buf2, file1Name, file2Name, file1Path, file2Path, mask1Raw, mask2Raw, scaleFile2, templateId, matchedPage1, matchedPage2, mode };
 }
 
 Deno.serve(async (req: Request) => {
@@ -656,6 +725,7 @@ Deno.serve(async (req: Request) => {
     let scaleFile2: number;
     let matchedPage1: number | undefined;
     let matchedPage2: number | undefined;
+    let mode: 'lenient' | 'strict' = 'lenient';
 
     if (contentType.includes("application/json")) {
       const body = await req.json() as Record<string, unknown>;
@@ -667,6 +737,7 @@ Deno.serve(async (req: Request) => {
       scaleFile2 = resolved.scaleFile2;
       matchedPage1 = resolved.matchedPage1;
       matchedPage2 = resolved.matchedPage2;
+      mode = resolved.mode;
 
       if (resolved.templateId) {
         const { data: tpl } = await supabase.from("templates").select("mask1, mask2").eq("id", resolved.templateId).maybeSingle();
@@ -692,6 +763,7 @@ Deno.serve(async (req: Request) => {
       scaleFile2 = resolved.scaleFile2;
       matchedPage1 = resolved.matchedPage1;
       matchedPage2 = resolved.matchedPage2;
+      mode = resolved.mode;
     }
 
     const { data: job, error: jobErr } = await supabase
@@ -714,7 +786,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const confidenceScore = await compareSignatures(buf1, buf2, scaleFile2);
+    const confidenceScore = await compareSignatures(buf1, buf2, mode);
 
     const timestamp = new Date().toLocaleString("en-US", {
       year: "numeric", month: "short", day: "numeric",
@@ -730,7 +802,8 @@ Deno.serve(async (req: Request) => {
       job.id,
       timestamp,
       matchedPage1,
-      matchedPage2
+      matchedPage2,
+      mode
     );
 
     const resultPath = `results/${job.id}.pdf`;
@@ -765,6 +838,7 @@ Deno.serve(async (req: Request) => {
       confidenceScore: Math.round(confidenceScore * 10) / 10,
       status: "completed",
       resultUrl: urlData.publicUrl,
+      mode,
     };
     if (matchedPage1 !== undefined) responseBody.matchedPage1 = matchedPage1;
     if (matchedPage2 !== undefined) responseBody.matchedPage2 = matchedPage2;

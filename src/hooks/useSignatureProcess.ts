@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase, UPLOADS_BUCKET, RESULTS_BUCKET, getPublicUrl } from '../lib/supabase';
 import { canvasToBlob, dataUrlToBlob } from '../lib/imageUtils';
-import type { SignatureRegion, VerificationJob, ProcessResponse } from '../types';
+import type { SignatureRegion, VerificationJob, ProcessResponse, CompareMode } from '../types';
 
 const EDGE_FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/signature-process`;
 
@@ -16,7 +16,8 @@ export function useSignatureProcess() {
     file2: File,
     region1: SignatureRegion,
     region2: SignatureRegion,
-    scaleFile2: number = 1.0
+    scaleFile2: number = 1.0,
+    mode: CompareMode = 'lenient'
   ) => {
     setLoading(true);
     setError(null);
@@ -53,6 +54,7 @@ export function useSignatureProcess() {
       formData.append('scale_file2', String(scaleFile2));
       formData.append('matched_page1', String(region1.mask.page ?? 1));
       formData.append('matched_page2', String(region2.mask.page ?? 1));
+      formData.append('mode', mode);
 
       const response = await fetch(EDGE_FN_URL, {
         method: 'POST',
