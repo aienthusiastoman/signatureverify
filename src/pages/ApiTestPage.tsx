@@ -260,9 +260,9 @@ export default function ApiTestPage() {
     });
   };
 
-  const resolvePageForFile = async (file: File, mask: MaskInput): Promise<number> => {
-    if (file.type !== 'application/pdf') return 1;
+  const resolvePageForFile = async (file: File, mask: MaskInput, scanPages: boolean): Promise<number> => {
     const defaultPage = +mask.page || 1;
+    if (file.type !== 'application/pdf' || !scanPages) return defaultPage;
     const m = { x: +mask.x, y: +mask.y, width: +mask.width, height: +mask.height };
 
     const canvas = await renderPdfPageToCanvas(file, defaultPage);
@@ -289,8 +289,8 @@ export default function ApiTestPage() {
       const { data: { session: freshSession } } = await supabase.auth.getSession();
 
       const [page1, page2] = await Promise.all([
-        resolvePageForFile(file1, activeMask1),
-        resolvePageForFile(file2, activeMask2),
+        resolvePageForFile(file1, activeMask1, false),
+        resolvePageForFile(file2, activeMask2, true),
       ]);
 
       const [b64_1, b64_2] = await Promise.all([toBase64(file1, page1), toBase64(file2, page2)]);

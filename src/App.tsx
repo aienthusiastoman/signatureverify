@@ -79,8 +79,10 @@ function CompareToolContent() {
 
   const handleProceedToMask = () => { if (file1 && file2) setStep('mask'); };
 
-  const resolvePageForMask = async (file: UploadedFile, mask: MaskRect): Promise<{ mask: MaskRect; warning?: string }> => {
+  const resolvePageForMask = async (file: UploadedFile, mask: MaskRect, scanPages = false): Promise<{ mask: MaskRect; warning?: string }> => {
     if (file.type !== 'pdf') return { mask };
+
+    if (!scanPages) return { mask };
 
     let frac = mask.pageThumbnailMaskFrac;
     if (!frac && mask.width > 5 && mask.height > 5) {
@@ -114,8 +116,8 @@ function CompareToolContent() {
     setAnchorWarning(null);
     try {
       const [r1, r2] = await Promise.all([
-        resolvePageForMask(file1, mask1),
-        resolvePageForMask(file2, mask2),
+        resolvePageForMask(file1, mask1, false),
+        resolvePageForMask(file2, mask2, true),
       ]);
 
       const warn = r1.warning ?? r2.warning ?? null;

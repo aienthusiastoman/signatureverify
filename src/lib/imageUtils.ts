@@ -145,29 +145,45 @@ function neutralizeRegion(
   return out;
 }
 
-function otsuThresholdGray(gray: Uint8Array, n: number): Uint8Array {
-  const hist = new Int32Array(256);
-  for (let i = 0; i < n; i++) hist[gray[i]]++;
+function gaussianAdaptiveThreshold(gray: Uint8Array, w: number, h: number, blockSize = 31, C = 15): Uint8Array {
+  const sigma = (blockSize - 1) / 6;
+  const half = Math.floor(blockSize / 2);
+  const kernel: number[] = [];
+  let kSum = 0;
+  for (let i = -half; i <= half; i++) {
+    const v = Math.exp(-(i * i) / (2 * sigma * sigma));
+    kernel.push(v);
+    kSum += v;
+  }
+  for (let i = 0; i < kernel.length; i++) kernel[i] /= kSum;
 
-  let sumAll = 0;
-  for (let i = 0; i < 256; i++) sumAll += i * hist[i];
-
-  let sumB = 0, wB = 0, maxVar = 0, threshold = 128;
-  for (let t = 0; t < 256; t++) {
-    wB += hist[t];
-    if (wB === 0) continue;
-    const wF = n - wB;
-    if (wF === 0) break;
-    sumB += t * hist[t];
-    const mB = sumB / wB;
-    const mF = (sumAll - sumB) / wF;
-    const varBetween = wB * wF * (mB - mF) * (mB - mF);
-    if (varBetween > maxVar) { maxVar = varBetween; threshold = t; }
+  const tmp = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let val = 0;
+      for (let k = 0; k < kernel.length; k++) {
+        const sx = Math.max(0, Math.min(w - 1, x - half + k));
+        val += gray[y * w + sx] * kernel[k];
+      }
+      tmp[y * w + x] = val;
+    }
   }
 
-  const result = new Uint8Array(n);
-  for (let i = 0; i < n; i++) {
-    result[i] = gray[i] <= threshold ? 255 : 0;
+  const blurred = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let val = 0;
+      for (let k = 0; k < kernel.length; k++) {
+        const sy = Math.max(0, Math.min(h - 1, y - half + k));
+        val += tmp[sy * w + x] * kernel[k];
+      }
+      blurred[y * w + x] = val;
+    }
+  }
+
+  const result = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    result[i] = gray[i] < blurred[i] - C ? 255 : 0;
   }
   return result;
 }
@@ -266,6 +282,40 @@ function extractLargestComponent(bin: Uint8Array, w: number, h: number): number 
   return bestArea;
 }
 
+function removeSmallBlobs(bin: Uint8Array, w: number, h: number, minBlobArea: number): void {
+  const labels = new Int32Array(w * h);
+  let labelId = 0;
+  const blobPixels = new Map<number, number[]>();
+
+  for (let i = 0; i < w * h; i++) {
+    if (bin[i] === 0 || labels[i] !== 0) continue;
+    labelId++;
+    const stack = [i];
+    labels[i] = labelId;
+    const pixels = [i];
+    while (stack.length > 0) {
+      const idx = stack.pop()!;
+      const cx = idx % w, cy = Math.floor(idx / w);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as [number, number][]) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+        const nidx = ny * w + nx;
+        if (bin[nidx] === 0 || labels[nidx] !== 0) continue;
+        labels[nidx] = labelId;
+        stack.push(nidx);
+        pixels.push(nidx);
+      }
+    }
+    blobPixels.set(labelId, pixels);
+  }
+
+  for (const pixels of blobPixels.values()) {
+    if (pixels.length < minBlobArea) {
+      for (const idx of pixels) bin[idx] = 0;
+    }
+  }
+}
+
 export function extractSignatureStrokes(
   gray: Uint8Array,
   w: number,
@@ -273,7 +323,7 @@ export function extractSignatureStrokes(
   lineKernelLen = 29,
   minArea = 50
 ): { cleaned: Uint8Array; area: number } | null {
-  const thresh = otsuThresholdGray(gray, w * h);
+  const thresh = gaussianAdaptiveThreshold(gray, w, h, 31, 15);
 
   const hLines = morphOpenH(thresh, w, h, lineKernelLen);
   subtractBin(thresh, hLines);
@@ -281,14 +331,17 @@ export function extractSignatureStrokes(
   const vLines = morphOpenV(thresh, w, h, lineKernelLen);
   subtractBin(thresh, vLines);
 
+  removeSmallBlobs(thresh, w, h, Math.max(10, Math.round(w * h * 0.0005)));
+
   let totalArea = 0;
   for (let i = 0; i < w * h; i++) { if (thresh[i] > 0) totalArea++; }
 
   if (totalArea < minArea) return null;
 
-  extractLargestComponent(thresh, w, h);
+  const largestArea = extractLargestComponent(thresh, w, h);
+  if (largestArea < minArea) return null;
 
-  return { cleaned: thresh, area: totalArea };
+  return { cleaned: thresh, area: largestArea };
 }
 
 const RENDER_SCALE = 2.0;
