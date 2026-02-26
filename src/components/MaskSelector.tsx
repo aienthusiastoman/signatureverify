@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Layers, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import type { SavedTemplate, MaskRect } from '../types';
+import type { SavedTemplate, MaskRect, MaskDefinition } from '../types';
 
 interface Props {
-  onApply: (mask1: MaskRect, mask2: MaskRect) => void;
+  onApply: (mask1: MaskRect, mask2: MaskRect, masks2?: MaskDefinition[]) => void;
 }
 
 export default function MaskSelector({ onApply }: Props) {
@@ -36,7 +36,8 @@ export default function MaskSelector({ onApply }: Props) {
   const handleSelect = (mask: SavedTemplate) => {
     setSelected(mask);
     setOpen(false);
-    onApply(mask.mask1, mask.mask2);
+    const loadedMasks2 = mask.masks2 && mask.masks2.length > 0 ? mask.masks2 : undefined;
+    onApply(mask.mask1, mask.mask2, loadedMasks2);
   };
 
   if (loading || masks.length === 0) return null;
@@ -66,30 +67,41 @@ export default function MaskSelector({ onApply }: Props) {
       {open && (
         <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl overflow-hidden">
           <div className="max-h-60 overflow-y-auto">
-            {masks.map(mask => (
-              <button
-                key={mask.id}
-                onClick={() => handleSelect(mask)}
-                className="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-700 transition-colors text-left"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-white text-xs font-semibold truncate">{mask.name}</p>
-                    {selected?.id === mask.id && <Check size={12} className="text-teal-400 shrink-0" />}
+            {masks.map(mask => {
+              const maskCount = mask.masks2 && mask.masks2.length > 1 ? mask.masks2.length : null;
+              return (
+                <button
+                  key={mask.id}
+                  onClick={() => handleSelect(mask)}
+                  className="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-700 transition-colors text-left"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-white text-xs font-semibold truncate">{mask.name}</p>
+                      {selected?.id === mask.id && <Check size={12} className="text-teal-400 shrink-0" />}
+                      {maskCount && (
+                        <span className="flex items-center gap-0.5 text-teal-400/60 text-xs shrink-0">
+                          <Layers size={10} />
+                          {maskCount}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-teal-400/70 text-xs">
+                        Doc1: {mask.mask1.page ? `p${mask.mask1.page}` : 'p1'}
+                        {mask.mask1.width > 0 ? ` · ${mask.mask1.width}×${mask.mask1.height}` : ''}
+                      </span>
+                      <span className="text-amber-400/70 text-xs">
+                        {maskCount
+                          ? `Doc2: ${maskCount} masks`
+                          : `Doc2: ${mask.mask2.page ? `p${mask.mask2.page}` : 'p1'}${mask.mask2.width > 0 ? ` · ${mask.mask2.width}×${mask.mask2.height}` : ''}`
+                        }
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 mt-1">
-                    <span className="text-teal-400/70 text-xs">
-                      Doc1: {mask.mask1.page ? `p${mask.mask1.page}` : 'p1'}
-                      {mask.mask1.width > 0 ? ` · ${mask.mask1.width}×${mask.mask1.height}` : ''}
-                    </span>
-                    <span className="text-amber-400/70 text-xs">
-                      Doc2: {mask.mask2.page ? `p${mask.mask2.page}` : 'p1'}
-                      {mask.mask2.width > 0 ? ` · ${mask.mask2.width}×${mask.mask2.height}` : ''}
-                    </span>
-                  </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

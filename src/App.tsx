@@ -81,18 +81,22 @@ function CompareToolContent() {
     setMultiRegions2([]);
   }, [file2]);
 
-  const handleLoadTemplate = useCallback((m1: MaskRect, m2: MaskRect) => {
+  const handleLoadTemplate = useCallback((m1: MaskRect, m2: MaskRect, loadedMasks2?: MaskDefinition[]) => {
     setMask1(m1);
-    setMasks2([{
-      id: `tpl-${Date.now()}`,
-      label: 'Mask 1',
-      page: m2.page ?? 1,
-      anchorText: m2.anchorText,
-      pageThumbnail: m2.pageThumbnail,
-      pageThumbnailMaskFrac: m2.pageThumbnailMaskFrac,
-      autoDetect: m2.autoDetect ?? false,
-      regions: (m2.width > 0 && m2.height > 0) ? [{ x: m2.x, y: m2.y, width: m2.width, height: m2.height }] : [],
-    }]);
+    if (loadedMasks2 && loadedMasks2.length > 0) {
+      setMasks2(loadedMasks2);
+    } else {
+      setMasks2([{
+        id: `tpl-${Date.now()}`,
+        label: 'Mask 1',
+        page: m2.page ?? 1,
+        anchorText: m2.anchorText,
+        pageThumbnail: m2.pageThumbnail,
+        pageThumbnailMaskFrac: m2.pageThumbnailMaskFrac,
+        autoDetect: m2.autoDetect ?? false,
+        regions: (m2.width > 0 && m2.height > 0) ? [{ x: m2.x, y: m2.y, width: m2.width, height: m2.height }] : [],
+      }]);
+    }
     setActiveDoc(1);
   }, []);
 
@@ -512,7 +516,7 @@ function CompareToolContent() {
                 height: masks2[0].regions[0].height,
                 page: masks2[0].page,
                 anchorText: masks2[0].anchorText,
-              } : null} showSave={true} />
+              } : null} masks2={masks2} showSave={true} />
               <div className="flex gap-3">
                 <button
                   onClick={() => setStep('mask')}

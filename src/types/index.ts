@@ -71,6 +71,7 @@ export interface SavedTemplate {
   name: string;
   mask1: MaskRect;
   mask2: MaskRect;
+  masks2?: MaskDefinition[] | null;
   created_at: string;
 }
 

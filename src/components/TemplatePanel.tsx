@@ -1,16 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Bookmark, BookmarkCheck, Trash2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Bookmark, BookmarkCheck, Trash2, ChevronDown, ChevronUp, Loader2, Layers } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import type { SavedTemplate, MaskRect } from '../types';
+import type { SavedTemplate, MaskRect, MaskDefinition } from '../types';
 
 interface Props {
-  onLoad: (mask1: MaskRect, mask2: MaskRect) => void;
+  onLoad: (mask1: MaskRect, mask2: MaskRect, masks2?: MaskDefinition[]) => void;
   mask1?: MaskRect | null;
   mask2?: MaskRect | null;
+  masks2?: MaskDefinition[] | null;
   showSave?: boolean;
 }
 
-export default function TemplatePanel({ onLoad, mask1, mask2, showSave = false }: Props) {
+export default function TemplatePanel({ onLoad, mask1, mask2, masks2, showSave = false }: Props) {
   const [templates, setTemplates] = useState<SavedTemplate[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -40,11 +41,18 @@ export default function TemplatePanel({ onLoad, mask1, mask2, showSave = false }
     }
     setSaving(true);
     setSaveError('');
-    const { error } = await supabase.from('templates').insert({
+
+    const insertPayload: Record<string, unknown> = {
       name: templateName.trim(),
       mask1,
       mask2,
-    });
+    };
+
+    if (masks2 && masks2.length > 0) {
+      insertPayload.masks2 = masks2;
+    }
+
+    const { error } = await supabase.from('templates').insert(insertPayload);
     if (error) {
       setSaveError('Failed to save template.');
     } else {
@@ -62,11 +70,18 @@ export default function TemplatePanel({ onLoad, mask1, mask2, showSave = false }
     setTemplates(prev => prev.filter(t => t.id !== id));
   };
 
+  const handleLoad = (t: SavedTemplate) => {
+    const loadedMasks2 = t.masks2 && t.masks2.length > 0 ? t.masks2 : undefined;
+    onLoad(t.mask1, t.mask2, loadedMasks2);
+  };
+
   const formatMaskLabel = (m: MaskRect) => {
     const page = m.page ? ` · p${m.page}` : '';
     const anchor = m.anchorText ? ` · "${m.anchorText}"` : '';
     return `${m.width}×${m.height}${page}${anchor}`;
   };
+
+  const canSave = !!mask1 && !!mask2;
 
   return (
     <div className="border border-slate-700 rounded-xl overflow-hidden">
@@ -88,7 +103,7 @@ export default function TemplatePanel({ onLoad, mask1, mask2, showSave = false }
 
       {expanded && (
         <div className="bg-slate-900 border-t border-slate-700">
-          {showSave && mask1 && mask2 && (
+          {showSave && canSave && (
             <div className="p-3 border-b border-slate-700/50">
               {!showSaveForm ? (
                 <button
@@ -97,6 +112,9 @@ export default function TemplatePanel({ onLoad, mask1, mask2, showSave = false }
                 >
                   <BookmarkCheck size={13} />
                   Save current regions as template
+                  {masks2 && masks2.length > 1 && (
+                    <span className="text-slate-500">({masks2.length} masks)</span>
+                  )}
                 </button>
               ) : (
                 <div className="space-y-2">
@@ -140,29 +158,44 @@ export default function TemplatePanel({ onLoad, mask1, mask2, showSave = false }
             <p className="text-slate-500 text-xs text-center py-6">No saved templates yet</p>
           )}
 
-          {!loading && templates.map(t => (
-            <div
-              key={t.id}
-              onClick={() => onLoad(t.mask1, t.mask2)}
-              className="flex items-center justify-between px-4 py-3 hover:bg-slate-800/60 cursor-pointer border-b border-slate-700/30 last:border-0 transition-colors group"
-            >
-              <div className="flex-1 min-w-0">
-                <p className="text-white text-sm font-medium truncate">{t.name}</p>
-                <p className="text-slate-500 text-xs mt-0.5">
-                  Doc1: {formatMaskLabel(t.mask1)} &nbsp;·&nbsp; Doc2: {formatMaskLabel(t.mask2)}
-                </p>
+          {!loading && templates.map(t => {
+            const maskCount = t.masks2 && t.masks2.length > 1 ? t.masks2.length : null;
+            return (
+              <div
+                key={t.id}
+                onClick={() => handleLoad(t)}
+                className="flex items-center justify-between px-4 py-3 hover:bg-slate-800/60 cursor-pointer border-b border-slate-700/30 last:border-0 transition-colors group"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-white text-sm font-medium truncate">{t.name}</p>
+                    {maskCount && (
+                      <span className="flex items-center gap-0.5 text-teal-400/70 text-xs shrink-0">
+                        <Layers size={10} />
+                        {maskCount}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-slate-500 text-xs mt-0.5">
+                    Doc1: {formatMaskLabel(t.mask1)} &nbsp;·&nbsp;
+                    {maskCount
+                      ? `Doc2: ${maskCount} masks`
+                      : `Doc2: ${formatMaskLabel(t.mask2)}`
+                    }
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 ml-2">
+                  <span className="text-teal-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Apply</span>
+                  <button
+                    onClick={e => handleDelete(t.id, e)}
+                    className="p-1 rounded hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-colors"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0 ml-2">
-                <span className="text-teal-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Apply</span>
-                <button
-                  onClick={e => handleDelete(t.id, e)}
-                  className="p-1 rounded hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-colors"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
