@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   LayoutTemplate, Pencil, Trash2, Check, X, Loader2, AlertCircle,
-  CheckCircle, FileText, ChevronLeft, Save, RotateCcw
+  CheckCircle, FileText, ChevronLeft, Save, RotateCcw, Scale, Layers
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import type { SavedTemplate, MaskRect } from '../types';
+import type { SavedTemplate, MaskRect, MaskDefinition } from '../types';
 
 const DOC_W = 240;
 const DOC_H = 320;
@@ -120,6 +120,144 @@ function MaskInputFields({
   );
 }
 
+const MASK_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
+
+interface MaskWeightEdit {
+  weight: string;
+  regionWeights: string[];
+}
+
+function MultiMaskWeightEditor({
+  masks,
+  edits,
+  onChange,
+}: {
+  masks: MaskDefinition[];
+  edits: MaskWeightEdit[];
+  onChange: (edits: MaskWeightEdit[]) => void;
+}) {
+  const totalWeight = edits.reduce((sum, e) => sum + (parseFloat(e.weight) || 1), 0);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Scale size={13} className="text-theme" />
+        <p className="text-font/70 text-xs font-semibold">Mask Weights</p>
+        <span className="ml-auto text-font/30 text-xs">Leave blank for equal weights</span>
+      </div>
+
+      <div className="space-y-2">
+        {masks.map((mask, idx) => {
+          const color = MASK_COLORS[idx % MASK_COLORS.length];
+          const edit = edits[idx] ?? { weight: '', regionWeights: [] };
+          const w = parseFloat(edit.weight) || 1;
+          const pct = totalWeight > 0 ? Math.round((w / totalWeight) * 100) : Math.round(100 / masks.length);
+
+          return (
+            <div key={mask.id} className="bg-black/20 border border-white/8 rounded-xl p-3 space-y-2.5">
+              <div className="flex items-center gap-3">
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: color }}
+                />
+                <span className="text-font/80 text-sm font-medium flex-1 truncate">{mask.label}</span>
+                {mask.page && (
+                  <span className="text-xs text-theme/70 shrink-0">p{mask.page}</span>
+                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-font/30 text-xs font-mono">{pct}%</span>
+                  <div className="flex items-center gap-1.5">
+                    <Scale size={11} className="text-font/35" />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={edit.weight}
+                      placeholder="1"
+                      onChange={e => {
+                        const next = [...edits];
+                        next[idx] = { ...edit, weight: e.target.value };
+                        onChange(next);
+                      }}
+                      className="w-16 bg-surface border border-white/10 focus:border-theme outline-none rounded-lg px-2 py-1 text-font text-xs text-center font-mono placeholder:text-font/25 transition-colors"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {mask.regions.length > 1 && (
+                <div className="pl-5 space-y-1.5">
+                  <p className="text-font/30 text-xs">Region weights within this mask</p>
+                  <div className="flex flex-wrap gap-2">
+                    {mask.regions.map((r, ri) => {
+                      const rw = edit.regionWeights[ri] ?? '';
+                      return (
+                        <div key={ri} className="flex items-center gap-1.5 bg-black/20 border border-white/8 rounded-lg px-2 py-1 text-xs">
+                          <span
+                            className="w-4 h-4 rounded-sm flex items-center justify-center text-white font-bold text-[10px]"
+                            style={{ backgroundColor: color }}
+                          >
+                            {ri + 1}
+                          </span>
+                          <span className="text-font/50 font-mono">{r.width}×{r.height}</span>
+                          <div className="flex items-center gap-1">
+                            <Scale size={9} className="text-font/30" />
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              value={rw}
+                              placeholder="1"
+                              onChange={e => {
+                                const next = [...edits];
+                                const newRW = [...(edit.regionWeights ?? [])];
+                                newRW[ri] = e.target.value;
+                                next[idx] = { ...edit, regionWeights: newRW };
+                                onChange(next);
+                              }}
+                              className="w-11 bg-surface border border-white/10 focus:border-theme outline-none rounded px-1 py-0.5 text-font text-xs text-center font-mono placeholder:text-font/25 transition-colors"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center justify-between text-xs text-font/35 bg-black/10 border border-white/5 rounded-lg px-3 py-2">
+        <span>Total weight</span>
+        <span className="font-mono">{totalWeight.toFixed(1)}</span>
+      </div>
+    </div>
+  );
+}
+
+function masksToWeightEdits(masks: MaskDefinition[]): MaskWeightEdit[] {
+  return masks.map(m => ({
+    weight: m.weight !== undefined ? String(m.weight) : '',
+    regionWeights: (m.regionWeights ?? []).map(w => String(w)),
+  }));
+}
+
+function applyWeightEdits(masks: MaskDefinition[], edits: MaskWeightEdit[]): MaskDefinition[] {
+  return masks.map((m, idx) => {
+    const edit = edits[idx];
+    if (!edit) return m;
+    const w = parseFloat(edit.weight);
+    const rw = edit.regionWeights.map(v => parseFloat(v)).filter(v => !isNaN(v));
+    return {
+      ...m,
+      weight: isNaN(w) ? undefined : w,
+      regionWeights: rw.length > 0 ? rw : undefined,
+    };
+  });
+}
+
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<SavedTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,6 +266,7 @@ export default function TemplatesPage() {
   const [editName, setEditName] = useState('');
   const [editMask1, setEditMask1] = useState<MaskInput>({ x: '0', y: '0', width: '0', height: '0', page: '1' });
   const [editMask2, setEditMask2] = useState<MaskInput>({ x: '0', y: '0', width: '0', height: '0', page: '1' });
+  const [editMasks2Weights, setEditMasks2Weights] = useState<MaskWeightEdit[]>([]);
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -156,11 +295,16 @@ export default function TemplatesPage() {
     setEditing(false);
   };
 
+  const isMultiMask = (t: SavedTemplate) => !!(t.masks2 && t.masks2.length > 0);
+
   const handleEdit = () => {
     if (!selected) return;
     setEditName(selected.name);
     setEditMask1(maskToInput(selected.mask1));
     setEditMask2(maskToInput(selected.mask2));
+    if (selected.masks2 && selected.masks2.length > 0) {
+      setEditMasks2Weights(masksToWeightEdits(selected.masks2));
+    }
     setEditing(true);
   };
 
@@ -171,10 +315,16 @@ export default function TemplatesPage() {
   const handleSave = async () => {
     if (!selected || !editName.trim()) return;
     setSaving(true);
+
+    const updatedMasks2 = selected.masks2 && selected.masks2.length > 0
+      ? applyWeightEdits(selected.masks2, editMasks2Weights)
+      : selected.masks2;
+
     const updated = {
       name: editName.trim(),
       mask1: inputToMask(editMask1),
       mask2: inputToMask(editMask2),
+      masks2: updatedMasks2,
     };
     const { error } = await supabase.from('templates').update(updated).eq('id', selected.id);
     if (error) {
@@ -261,14 +411,20 @@ export default function TemplatesPage() {
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                 selected?.id === t.id ? 'bg-teal-500/20' : 'bg-black/20'
               }`}>
-                <FileText size={14} className={selected?.id === t.id ? 'text-theme' : 'text-font/40'} />
+                {isMultiMask(t)
+                  ? <Layers size={14} className={selected?.id === t.id ? 'text-theme' : 'text-font/40'} />
+                  : <FileText size={14} className={selected?.id === t.id ? 'text-theme' : 'text-font/40'} />
+                }
               </div>
               <div className="flex-1 min-w-0">
                 <p className={`text-sm font-semibold truncate ${selected?.id === t.id ? 'text-teal-300' : 'text-font'}`}>
                   {t.name}
                 </p>
-                <p className="text-font/30 text-xs">
+                <p className="text-font/30 text-xs flex items-center gap-1.5">
                   {new Date(t.created_at).toLocaleDateString()}
+                  {isMultiMask(t) && (
+                    <span className="bg-theme/15 text-theme rounded px-1">{t.masks2!.length} masks</span>
+                  )}
                 </p>
               </div>
               {deleteConfirm === t.id ? (
@@ -354,67 +510,145 @@ export default function TemplatesPage() {
                   Created {new Date(selected.created_at).toLocaleString()}
                 </p>
 
-                <div className="flex flex-wrap gap-8 justify-center">
-                  {previewMask1 && (
-                    <RegionDiagram mask={previewMask1} label="Document 1 — Reference" color="#14b8a6" />
-                  )}
-                  {previewMask2 && (
-                    <RegionDiagram mask={previewMask2} label="Document 2 — To Verify" color="#f59e0b" />
-                  )}
-                </div>
+                {!isMultiMask(selected) && (
+                  <>
+                    <div className="flex flex-wrap gap-8 justify-center">
+                      {previewMask1 && (
+                        <RegionDiagram mask={previewMask1} label="Document 1 — Reference" color="#14b8a6" />
+                      )}
+                      {previewMask2 && (
+                        <RegionDiagram mask={previewMask2} label="Document 2 — To Verify" color="#f59e0b" />
+                      )}
+                    </div>
 
-                {editing && (
-                  <div className="space-y-4 pt-4 border-t border-white/8">
-                    <p className="text-font/50 text-xs font-semibold uppercase tracking-wide">Edit Region Coordinates</p>
-                    <MaskInputFields
-                      label="Document 1 — Reference region"
-                      value={editMask1}
-                      onChange={setEditMask1}
-                      color="#14b8a6"
-                    />
-                    <MaskInputFields
-                      label="Document 2 — To Verify region"
-                      value={editMask2}
-                      onChange={setEditMask2}
-                      color="#f59e0b"
-                    />
-                  </div>
+                    {editing && (
+                      <div className="space-y-4 pt-4 border-t border-white/8">
+                        <p className="text-font/50 text-xs font-semibold uppercase tracking-wide">Edit Region Coordinates</p>
+                        <MaskInputFields
+                          label="Document 1 — Reference region"
+                          value={editMask1}
+                          onChange={setEditMask1}
+                          color="#14b8a6"
+                        />
+                        <MaskInputFields
+                          label="Document 2 — To Verify region"
+                          value={editMask2}
+                          onChange={setEditMask2}
+                          color="#f59e0b"
+                        />
+                      </div>
+                    )}
+
+                    {!editing && (
+                      <div className="grid sm:grid-cols-2 gap-4 pt-2">
+                        {[
+                          { label: 'Document 1 Region', mask: selected.mask1, color: '#14b8a6' },
+                          { label: 'Document 2 Region', mask: selected.mask2, color: '#f59e0b' },
+                        ].map(({ label, mask, color }) => (
+                          <div key={label} className="bg-black/15 border border-white/8 rounded-xl p-4 space-y-2">
+                            <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color }}>
+                              <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                              {label}
+                            </p>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                              {[
+                                ['X offset', mask.x + 'px'],
+                                ['Y offset', mask.y + 'px'],
+                                ['Width', mask.width + 'px'],
+                                ['Height', mask.height + 'px'],
+                                ['Page', String(mask.page ?? 1)],
+                              ].map(([k, v]) => (
+                                <div key={k} className="flex items-center justify-between">
+                                  <span className="text-font/40 text-xs">{k}</span>
+                                  <span className="text-font text-xs font-mono font-semibold">{v}</span>
+                                </div>
+                              ))}
+                            </div>
+                            {mask.anchorText && (
+                              <div className="mt-2 pt-2 border-t border-white/8">
+                                <span className="text-font/40 text-xs block mb-0.5">Anchor Text</span>
+                                <span className="text-theme text-xs font-mono">&ldquo;{mask.anchorText}&rdquo;</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
 
-                {!editing && (
-                  <div className="grid sm:grid-cols-2 gap-4 pt-2">
-                    {[
-                      { label: 'Document 1 Region', mask: selected.mask1, color: '#14b8a6' },
-                      { label: 'Document 2 Region', mask: selected.mask2, color: '#f59e0b' },
-                    ].map(({ label, mask, color }) => (
-                      <div key={label} className="bg-black/15 border border-white/8 rounded-xl p-4 space-y-2">
-                        <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color }}>
-                          <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                          {label}
-                        </p>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                          {[
-                            ['X offset', mask.x + 'px'],
-                            ['Y offset', mask.y + 'px'],
-                            ['Width', mask.width + 'px'],
-                            ['Height', mask.height + 'px'],
-                            ['Page', String(mask.page ?? 1)],
-                          ].map(([k, v]) => (
-                            <div key={k} className="flex items-center justify-between">
-                              <span className="text-font/40 text-xs">{k}</span>
-                              <span className="text-font text-xs font-mono font-semibold">{v}</span>
-                            </div>
-                          ))}
+                {isMultiMask(selected) && (
+                  <>
+                    {!editing && (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Layers size={14} className="text-theme" />
+                          <p className="text-font/70 text-sm font-semibold">Multi-Mask Configuration</p>
+                          <span className="text-font/35 text-xs">{selected.masks2!.length} masks</span>
                         </div>
-                        {mask.anchorText && (
-                          <div className="mt-2 pt-2 border-t border-white/8">
-                            <span className="text-font/40 text-xs block mb-0.5">Anchor Text</span>
-                            <span className="text-theme text-xs font-mono">&ldquo;{mask.anchorText}&rdquo;</span>
-                          </div>
-                        )}
+                        <div className="space-y-2">
+                          {selected.masks2!.map((mask, idx) => {
+                            const color = MASK_COLORS[idx % MASK_COLORS.length];
+                            const hasWeight = mask.weight !== undefined;
+                            const totalW = selected.masks2!.reduce((s, m) => s + (m.weight ?? 1), 0);
+                            const pct = Math.round(((mask.weight ?? 1) / totalW) * 100);
+                            return (
+                              <div key={mask.id} className="bg-black/15 border border-white/8 rounded-xl p-3 space-y-2">
+                                <div className="flex items-center gap-2.5">
+                                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                                  <span className="text-font/80 text-sm font-medium flex-1">{mask.label}</span>
+                                  {mask.page && <span className="text-xs text-theme/70">p{mask.page}</span>}
+                                  {hasWeight && (
+                                    <span className="text-xs text-font/40 bg-white/5 border border-white/8 rounded px-1.5 py-0.5 font-mono flex items-center gap-1">
+                                      <Scale size={9} />
+                                      {mask.weight} ({pct}%)
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="pl-5 flex flex-wrap gap-1.5">
+                                  {mask.regions.map((r, ri) => {
+                                    const rw = mask.regionWeights?.[ri];
+                                    return (
+                                      <span key={ri} className="text-xs bg-black/20 border border-white/8 rounded px-2 py-0.5 text-font/50 font-mono flex items-center gap-1">
+                                        <span className="w-3.5 h-3.5 rounded-sm flex items-center justify-center text-white font-bold text-[9px]" style={{ backgroundColor: color }}>{ri + 1}</span>
+                                        {r.width}×{r.height}
+                                        {rw !== undefined && <span className="text-font/35">×{rw}</span>}
+                                      </span>
+                                    );
+                                  })}
+                                  {mask.autoDetect && (
+                                    <span className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded px-2 py-0.5">Auto-detect</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    ))}
-                  </div>
+                    )}
+
+                    {editing && (
+                      <div className="space-y-6 pt-4 border-t border-white/8">
+                        <div className="space-y-4">
+                          <p className="text-font/50 text-xs font-semibold uppercase tracking-wide">Reference Region (Document 1)</p>
+                          <MaskInputFields
+                            label="Document 1 — Reference region"
+                            value={editMask1}
+                            onChange={setEditMask1}
+                            color="#14b8a6"
+                          />
+                        </div>
+
+                        <div className="pt-4 border-t border-white/8">
+                          <MultiMaskWeightEditor
+                            masks={selected.masks2!}
+                            edits={editMasks2Weights}
+                            onChange={setEditMasks2Weights}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>

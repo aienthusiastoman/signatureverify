@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, ChevronLeft, ChevronRight, FileText,
-  Wand2, RotateCcw, Move, Scan, ScanText, Square, X
+  Wand2, RotateCcw, Move, Scan, ScanText, Square, X, Scale
 } from 'lucide-react';
 import type { MaskDefinition, MaskRegion, UploadedFile } from '../types';
 import { autoDetectSignature } from '../lib/signatureDetect';
@@ -316,6 +316,23 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
     onMasksChange(updated);
   };
 
+  const handleWeightChange = (val: string) => {
+    const w = parseFloat(val);
+    const updated = masks.map((m, idx) => idx !== activeMaskIdx ? m : { ...m, weight: isNaN(w) ? undefined : Math.max(0, w) });
+    onMasksChange(updated);
+  };
+
+  const handleRegionWeightChange = (regionIdx: number, val: string) => {
+    const w = parseFloat(val);
+    const updated = masks.map((m, idx) => {
+      if (idx !== activeMaskIdx) return m;
+      const rw = [...(m.regionWeights ?? m.regions.map(() => 1))];
+      rw[regionIdx] = isNaN(w) ? 1 : Math.max(0, w);
+      return { ...m, regionWeights: rw };
+    });
+    onMasksChange(updated);
+  };
+
   const maskOnThisPage = !isPdf || activeMask?.page === selectedPage;
 
   return (
@@ -385,6 +402,20 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
               />
             </div>
 
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Scale size={12} className="text-font/40" />
+              <span className="text-font/40 text-xs">Weight</span>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={activeMask.weight ?? ''}
+                onChange={e => handleWeightChange(e.target.value)}
+                placeholder="1"
+                className="w-16 bg-black/20 border border-white/10 focus:border-theme outline-none rounded-lg px-2 py-1.5 text-font text-xs text-center font-mono placeholder:text-font/25 transition-colors"
+              />
+            </div>
+
             {!activeMask.autoDetect && (
               <button
                 onClick={handleAutoDetect}
@@ -430,23 +461,45 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
           )}
 
           {!activeMask.autoDetect && activeMask.regions.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-font/40 text-xs font-medium">Regions in this mask</p>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-font/40 text-xs font-medium">Regions in this mask</p>
+                {activeMask.regions.length > 1 && (
+                  <p className="text-font/30 text-xs">Set weight per region to adjust sub-score influence</p>
+                )}
+              </div>
               <div className="flex flex-wrap gap-2">
-                {activeMask.regions.map((r, ri) => (
-                  <div key={ri} className="flex items-center gap-1.5 bg-black/20 border border-white/8 rounded-lg px-2 py-1 text-xs">
-                    <span
-                      className="w-4 h-4 rounded-sm flex items-center justify-center text-white font-bold text-[10px]"
-                      style={{ backgroundColor: maskColor(activeMaskIdx) }}
-                    >
-                      {ri + 1}
-                    </span>
-                    <span className="text-font/70 font-mono">{r.width}×{r.height}</span>
-                    <button onClick={() => handleRemoveRegion(ri)} className="text-font/35 hover:text-red-400 transition-colors">
-                      <Trash2 size={11} />
-                    </button>
-                  </div>
-                ))}
+                {activeMask.regions.map((r, ri) => {
+                  const rw = activeMask.regionWeights?.[ri];
+                  return (
+                    <div key={ri} className="flex items-center gap-1.5 bg-black/20 border border-white/8 rounded-lg px-2 py-1 text-xs">
+                      <span
+                        className="w-4 h-4 rounded-sm flex items-center justify-center text-white font-bold text-[10px]"
+                        style={{ backgroundColor: maskColor(activeMaskIdx) }}
+                      >
+                        {ri + 1}
+                      </span>
+                      <span className="text-font/70 font-mono">{r.width}×{r.height}</span>
+                      {activeMask.regions.length > 1 && (
+                        <div className="flex items-center gap-1">
+                          <Scale size={9} className="text-font/30" />
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            value={rw ?? ''}
+                            onChange={e => handleRegionWeightChange(ri, e.target.value)}
+                            placeholder="1"
+                            className="w-11 bg-surface border border-white/10 focus:border-theme outline-none rounded px-1 py-0.5 text-font text-xs text-center font-mono placeholder:text-font/25 transition-colors"
+                          />
+                        </div>
+                      )}
+                      <button onClick={() => handleRemoveRegion(ri)} className="text-font/35 hover:text-red-400 transition-colors">
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

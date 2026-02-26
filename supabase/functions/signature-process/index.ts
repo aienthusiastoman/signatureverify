@@ -1062,7 +1062,7 @@ async function resolveImageBuffers(formData: FormData): Promise<{
   matchedPage2: number | undefined;
   mode: 'lenient' | 'strict' | 'super_lenient';
   isMultiMask: boolean;
-  multiMaskBufs: { buf: ArrayBuffer; label: string; page: number }[];
+  multiMaskBufs: { buf: ArrayBuffer; label: string; page: number; weight?: number; regionWeights?: number[] }[];
 }> {
   const file1Name = (formData.get("file1_name") as string) || "document1";
   const file2Name = (formData.get("file2_name") as string) || "document2";
@@ -1109,7 +1109,14 @@ async function resolveImageBuffers(formData: FormData): Promise<{
       const abuf = await f.arrayBuffer();
       const label = (formData.get(`mask2_${i}_label`) as string) || `Mask ${i + 1}`;
       const page = parseInt((formData.get(`mask2_${i}_page`) as string) || "1");
-      multiMaskBufs.push({ buf: abuf, label, page });
+      const weightRaw = formData.get(`mask2_${i}_weight`) as string | null;
+      const weight = weightRaw ? parseFloat(weightRaw) : undefined;
+      const regionWeightsRaw = formData.get(`mask2_${i}_region_weights`) as string | null;
+      let regionWeights: number[] | undefined;
+      if (regionWeightsRaw) {
+        try { regionWeights = JSON.parse(regionWeightsRaw); } catch { regionWeights = undefined; }
+      }
+      multiMaskBufs.push({ buf: abuf, label, page, weight, regionWeights });
     }
   }
 
@@ -1278,7 +1285,13 @@ Deno.serve(async (req: Request) => {
         if (refNorm && verifyBlobs.length > 1) {
           const rawScores = verifyBlobs.map(vb => computeScoreFastNorm(refNorm, vb, mode));
           subScores = rawScores.map(sc => Math.round(sc * 10) / 10);
-          s = rawScores.reduce((a, b) => a + b, 0) / rawScores.length;
+          if (item.regionWeights && item.regionWeights.length > 0) {
+            const rw = rawScores.map((_, ri) => (item.regionWeights![ri] ?? 1));
+            const totalRW = rw.reduce((a, b) => a + b, 0) || 1;
+            s = rawScores.reduce((sum, sc, ri) => sum + sc * rw[ri], 0) / totalRW;
+          } else {
+            s = rawScores.reduce((a, b) => a + b, 0) / rawScores.length;
+          }
         } else if (refBlob && verifyBlobs.length === 1) {
           s = computeScore(refBlob, verifyBlobs[0], mode);
         } else if (refNorm && verifyBlobs.length === 0) {
@@ -1299,11 +1312,14 @@ Deno.serve(async (req: Request) => {
           maskLabel: item.label,
           page: item.page,
           score: Math.round(s * 10) / 10,
+          weight: item.weight,
           subScores,
         });
       }
 
-      confidenceScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+      const maskWeights = multiMaskBufs.map(m => m.weight ?? 1);
+      const totalMaskWeight = maskWeights.reduce((a, b) => a + b, 0) || 1;
+      confidenceScore = scores.reduce((sum, s, i) => sum + s * maskWeights[i], 0) / totalMaskWeight;
       primarySig2Bytes = new Uint8Array(multiMaskBufs[0].buf);
       matchedPage2 = multiMaskBufs[0].page;
     } else {

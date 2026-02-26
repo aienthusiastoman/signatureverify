@@ -131,6 +131,12 @@ export function useSignatureProcess() {
         formData.append(`signature2_${idx}`, blob, `sig2_${idx}.png`);
         formData.append(`mask2_${idx}_label`, mr.maskDef.label);
         formData.append(`mask2_${idx}_page`, String(mr.page));
+        if (mr.maskDef.weight !== undefined) {
+          formData.append(`mask2_${idx}_weight`, String(mr.maskDef.weight));
+        }
+        if (mr.maskDef.regionWeights && mr.maskDef.regionWeights.length > 0) {
+          formData.append(`mask2_${idx}_region_weights`, JSON.stringify(mr.maskDef.regionWeights));
+        }
       });
       formData.append('mask2_count', String(multiRegions.length));
 

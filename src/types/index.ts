@@ -26,6 +26,8 @@ export interface MaskDefinition {
   pageThumbnailMaskFrac?: { x: number; y: number; w: number; h: number };
   autoDetect?: boolean;
   regions: MaskRegion[];
+  weight?: number;
+  regionWeights?: number[];
 }
 
 export interface UploadedFile {
@@ -82,6 +84,7 @@ export interface MaskScoreBreakdown {
   maskLabel: string;
   page: number;
   score: number;
+  weight?: number;
   sigDataUrl?: string;
 }
 

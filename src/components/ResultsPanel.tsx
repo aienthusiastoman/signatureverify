@@ -80,6 +80,9 @@ function ScoreBadge({ score, size = 'lg' }: { score: number; size?: 'sm' | 'lg' 
 }
 
 function MaskBreakdownPanel({ breakdown }: { breakdown: MaskScoreBreakdown[] }) {
+  const hasWeights = breakdown.some(b => b.weight !== undefined && b.weight !== 1);
+  const totalWeight = breakdown.reduce((sum, b) => sum + (b.weight ?? 1), 0);
+
   return (
     <div className="bg-surface border border-white/8 rounded-2xl p-4 space-y-3">
       <h3 className="text-font font-semibold flex items-center gap-2">
@@ -103,6 +106,8 @@ function MaskBreakdownPanel({ breakdown }: { breakdown: MaskScoreBreakdown[] }) 
             clamp >= 75 ? CheckCircle :
             clamp >= 50 ? AlertTriangle :
             XCircle;
+          const w = item.weight ?? 1;
+          const pct = totalWeight > 0 ? Math.round((w / totalWeight) * 100) : Math.round(100 / breakdown.length);
 
           return (
             <div key={item.maskIndex} className="bg-black/20 border border-white/8 rounded-xl p-3 space-y-2">
@@ -113,6 +118,11 @@ function MaskBreakdownPanel({ breakdown }: { breakdown: MaskScoreBreakdown[] }) 
                   </span>
                   <span className="text-font/70 text-sm font-medium truncate">{item.maskLabel}</span>
                   <span className="shrink-0 text-xs text-theme">p{item.page}</span>
+                  {hasWeights && (
+                    <span className="shrink-0 text-xs text-font/35 bg-white/5 border border-white/8 rounded px-1.5 py-0.5 font-mono">
+                      {pct}%
+                    </span>
+                  )}
                 </div>
                 <div className={`flex items-center gap-1.5 shrink-0 ${textColor}`}>
                   <Icon size={13} />
@@ -132,10 +142,21 @@ function MaskBreakdownPanel({ breakdown }: { breakdown: MaskScoreBreakdown[] }) 
       </div>
 
       <div className="border-t border-white/8 pt-2 flex items-center justify-between text-xs">
-        <span className="text-font/35">Average score</span>
-        <span className="text-font/60 font-mono">
-          ({breakdown.map(b => b.score.toFixed(1)).join(' + ')}) ÷ {breakdown.length}
-        </span>
+        {hasWeights ? (
+          <>
+            <span className="text-font/35">Weighted average</span>
+            <span className="text-font/60 font-mono">
+              ({breakdown.map(b => `${b.score.toFixed(1)}×${b.weight ?? 1}`).join(' + ')}) ÷ {totalWeight.toFixed(1)}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="text-font/35">Equal-weight average</span>
+            <span className="text-font/60 font-mono">
+              ({breakdown.map(b => b.score.toFixed(1)).join(' + ')}) ÷ {breakdown.length}
+            </span>
+          </>
+        )}
       </div>
     </div>
   );
@@ -154,7 +175,9 @@ export default function ResultsPanel({ result, job }: Props) {
         <ScoreBadge score={result.confidenceScore} size="lg" />
         {hasBreakdown && (
           <p className="text-font/35 text-xs mt-3">
-            Averaged from {result.maskBreakdown!.length} mask scores — see breakdown below
+            {result.maskBreakdown!.some(b => b.weight !== undefined && b.weight !== 1)
+              ? `Weighted average from ${result.maskBreakdown!.length} mask scores — see breakdown below`
+              : `Averaged from ${result.maskBreakdown!.length} mask scores — see breakdown below`}
           </p>
         )}
       </div>
