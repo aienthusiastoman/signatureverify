@@ -46,15 +46,136 @@ function maskToInput(m: MaskRect): MaskInput {
   };
 }
 
-function buildCode(lang: Language, file1Name: string, file2Name: string, mask1: MaskInput, mask2: MaskInput, keyLabel: string, mode: CompareMode, templateId?: string): string {
+function buildCode(
+  lang: Language,
+  file1Name: string,
+  file2Name: string,
+  mask1: MaskInput,
+  mask2: MaskInput,
+  keyLabel: string,
+  mode: CompareMode,
+  templateId?: string,
+  templateName?: string,
+): string {
   const m1 = `{"x":${mask1.x},"y":${mask1.y},"width":${mask1.width},"height":${mask1.height},"page":${mask1.page}}`;
   const m2 = `{"x":${mask2.x},"y":${mask2.y},"width":${mask2.width},"height":${mask2.height},"page":${mask2.page}}`;
-  const templateLine = templateId ? `\n    "template_id": "${templateId}",` : '';
+
+  if (templateId) {
+    const nameComment = templateName ? ` # ${templateName}` : '';
+
+    if (lang === 'curl') return `curl -X POST "${ENDPOINT}" \\
+  -H "Authorization: Bearer ${keyLabel}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "template_id": "${templateId}",${nameComment}
+    "file1_base64": "<BASE64_OF_${file1Name.toUpperCase()}>",
+    "file2_base64": "<BASE64_OF_${file2Name.toUpperCase()}>",
+    "file1_name": "${file1Name}",
+    "file2_name": "${file2Name}",
+    "mode": "${mode}"
+  }'`;
+
+    if (lang === 'javascript') return `const toB64 = f => new Promise(r => {
+  const reader = new FileReader();
+  reader.onload = () => r(reader.result.split(',')[1]);
+  reader.readAsDataURL(f);
+});
+
+const res = await fetch('${ENDPOINT}', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer ${keyLabel}',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    template_id: '${templateId}', // ${templateName ?? ''}
+    file1_base64: await toB64(file1),
+    file2_base64: await toB64(file2),
+    file1_name: '${file1Name}',
+    file2_name: '${file2Name}',
+    mode: '${mode}',
+  }),
+});
+const data = await res.json();
+console.log(data.confidenceScore, data.mode);`;
+
+    if (lang === 'python') return `import requests, base64
+
+def b64(path):
+    with open(path, 'rb') as f:
+        return base64.b64encode(f.read()).decode()
+
+res = requests.post(
+    '${ENDPOINT}',
+    headers={
+        'Authorization': 'Bearer ${keyLabel}',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'template_id': '${templateId}',  # ${templateName ?? ''}
+        'file1_base64': b64('${file1Name}'),
+        'file2_base64': b64('${file2Name}'),
+        'file1_name': '${file1Name}',
+        'file2_name': '${file2Name}',
+        'mode': '${mode}',
+    }
+)
+print(res.json())`;
+
+    if (lang === 'php') return `<?php
+$payload = json_encode([
+    'template_id'  => '${templateId}', // ${templateName ?? ''}
+    'file1_base64' => base64_encode(file_get_contents('${file1Name}')),
+    'file2_base64' => base64_encode(file_get_contents('${file2Name}')),
+    'file1_name'   => '${file1Name}',
+    'file2_name'   => '${file2Name}',
+    'mode'         => '${mode}',
+]);
+$ch = curl_init('${ENDPOINT}');
+curl_setopt_array($ch, [
+    CURLOPT_POST => true,
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HTTPHEADER => [
+        'Authorization: Bearer ${keyLabel}',
+        'Content-Type: application/json',
+    ],
+    CURLOPT_POSTFIELDS => $payload,
+]);
+echo curl_exec($ch);`;
+
+    if (lang === 'go') return `package main
+
+import (
+    "bytes", "encoding/base64", "encoding/json",
+    "fmt", "io", "net/http", "os"
+)
+
+func main() {
+    payload, _ := json.Marshal(map[string]any{
+        "template_id": "${templateId}", // ${templateName ?? ''}
+        "file1_base64": func() string {
+            d, _ := os.ReadFile("${file1Name}"); return base64.StdEncoding.EncodeToString(d)
+        }(),
+        "file2_base64": func() string {
+            d, _ := os.ReadFile("${file2Name}"); return base64.StdEncoding.EncodeToString(d)
+        }(),
+        "file1_name": "${file1Name}",
+        "file2_name": "${file2Name}",
+        "mode": "${mode}",
+    })
+    req, _ := http.NewRequest("POST", "${ENDPOINT}", bytes.NewReader(payload))
+    req.Header.Set("Authorization", "Bearer ${keyLabel}")
+    req.Header.Set("Content-Type", "application/json")
+    resp, _ := http.DefaultClient.Do(req)
+    body, _ := io.ReadAll(resp.Body)
+    fmt.Println(string(body))
+}`;
+  }
 
   if (lang === 'curl') return `curl -X POST "${ENDPOINT}" \\
   -H "Authorization: Bearer ${keyLabel}" \\
   -H "Content-Type: application/json" \\
-  -d '{${templateLine}
+  -d '{
     "file1_base64": "<BASE64_OF_${file1Name.toUpperCase()}>",
     "file2_base64": "<BASE64_OF_${file2Name.toUpperCase()}>",
     "file1_name": "${file1Name}",
@@ -76,7 +197,7 @@ const res = await fetch('${ENDPOINT}', {
     'Authorization': 'Bearer ${keyLabel}',
     'Content-Type': 'application/json',
   },
-  body: JSON.stringify({${templateId ? `\n    template_id: '${templateId}',` : ''}
+  body: JSON.stringify({
     file1_base64: await toB64(file1),
     file2_base64: await toB64(file2),
     file1_name: '${file1Name}',
@@ -101,7 +222,7 @@ res = requests.post(
         'Authorization': 'Bearer ${keyLabel}',
         'Content-Type': 'application/json',
     },
-    json={${templateId ? `\n        'template_id': '${templateId}',` : ''}
+    json={
         'file1_base64': b64('${file1Name}'),
         'file2_base64': b64('${file2Name}'),
         'file1_name': '${file1Name}',
@@ -114,7 +235,7 @@ res = requests.post(
 print(res.json())`;
 
   if (lang === 'php') return `<?php
-$payload = json_encode([${templateId ? `\n    'template_id' => '${templateId}',` : ''}
+$payload = json_encode([
     'file1_base64' => base64_encode(file_get_contents('${file1Name}')),
     'file2_base64' => base64_encode(file_get_contents('${file2Name}')),
     'file1_name'   => '${file1Name}',
@@ -143,7 +264,7 @@ import (
 )
 
 func main() {
-    payload, _ := json.Marshal(map[string]any{${templateId ? `\n        "template_id": "${templateId}",` : ''}
+    payload, _ := json.Marshal(map[string]any{
         "file1_base64": func() string {
             d, _ := os.ReadFile("${file1Name}"); return base64.StdEncoding.EncodeToString(d)
         }(),
@@ -416,7 +537,8 @@ export default function ApiTestPage() {
   };
 
   const templateIdForCode = useTemplate && selectedTemplateId ? selectedTemplateId : undefined;
-  const codeExample = buildCode(lang, file1?.name || 'document1.pdf', file2?.name || 'document2.pdf', activeMask1, activeMask2, keyLabel, compareMode, templateIdForCode);
+  const templateNameForCode = useTemplate && selectedTemplate ? selectedTemplate.name : undefined;
+  const codeExample = buildCode(lang, file1?.name || 'document1.pdf', file2?.name || 'document2.pdf', activeMask1, activeMask2, keyLabel, compareMode, templateIdForCode, templateNameForCode);
 
   const copyCode = () => { navigator.clipboard.writeText(codeExample); setCopiedCode(true); setTimeout(() => setCopiedCode(false), 2000); };
   const copyResponse = () => { if (!response) return; navigator.clipboard.writeText(response); setCopiedResponse(true); setTimeout(() => setCopiedResponse(false), 2000); };
