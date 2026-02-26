@@ -247,6 +247,38 @@ function dilate3(bin: Uint8Array, w: number, h: number): Uint8Array {
   return out;
 }
 
+function dilate1(bin: Uint8Array, w: number, h: number): Uint8Array {
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (bin[y * w + x] === 0) continue;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const ny = y + dy, nx = x + dx;
+          if (ny >= 0 && ny < h && nx >= 0 && nx < w) out[ny * w + nx] = 255;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function dilate5(bin: Uint8Array, w: number, h: number): Uint8Array {
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (bin[y * w + x] === 0) continue;
+      for (let dy = -4; dy <= 4; dy++) {
+        for (let dx = -4; dx <= 4; dx++) {
+          const ny = y + dy, nx = x + dx;
+          if (ny >= 0 && ny < h && nx >= 0 && nx < w) out[ny * w + nx] = 255;
+        }
+      }
+    }
+  }
+  return out;
+}
+
 function morphErodeGray(gray: Uint8Array, w: number, h: number, r: number): Float32Array {
   const out = new Float32Array(w * h);
   for (let y = 0; y < h; y++) {
@@ -354,15 +386,100 @@ function tryExtractBlob(gray: Uint8Array, w: number, h: number, C: number): { pi
   return { pixels: result, area: actualArea, w: cw, h: ch };
 }
 
+function tryExtractAllBlobs(
+  gray: Uint8Array, w: number, h: number, C: number
+): { pixels: Uint8Array; bw: number; bh: number }[] | null {
+  const cropped = inwardCropGray(gray, w, h, 6);
+  const cg = cropped.gray, cw = cropped.w, ch = cropped.h;
+
+  const bh = blackHatGray(cg, cw, ch, 3);
+  const prewhitened = percentileMaskPrewhiten(cg, bh, 0.30);
+  const thresh = adaptiveThresholdGaussian(prewhitened, cw, ch, 31, C);
+
+  const hLines = morphOpenH(thresh, cw, ch, Math.max(20, Math.floor(cw * 0.15)));
+  subtractBin(thresh, hLines);
+  const vLines = morphOpenV(thresh, cw, ch, Math.max(20, Math.floor(ch * 0.15)));
+  subtractBin(thresh, vLines);
+
+  removeSmallBlobsInPlace(thresh, cw, ch, 20);
+
+  const dilated = dilate3(thresh, cw, ch);
+  const totalPx = cw * ch;
+
+  const labels = new Int32Array(cw * ch);
+  let nextLabel = 1;
+  const blobBboxes = new Map<number, { x0: number; y0: number; x1: number; y1: number; count: number }>();
+
+  for (let i = 0; i < cw * ch; i++) {
+    if (dilated[i] === 0 || labels[i] !== 0) continue;
+    const lbl = nextLabel++;
+    const stack = [i];
+    labels[i] = lbl;
+    let x0 = i % cw, y0 = Math.floor(i / cw), x1 = x0, y1 = y0, count = 1;
+    while (stack.length > 0) {
+      const idx = stack.pop()!;
+      const cx = idx % cw, cy = Math.floor(idx / cw);
+      if (cx < x0) x0 = cx; if (cx > x1) x1 = cx;
+      if (cy < y0) y0 = cy; if (cy > y1) y1 = cy;
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number,number][]) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || nx >= cw || ny < 0 || ny >= ch) continue;
+        const nidx = ny * cw + nx;
+        if (dilated[nidx] === 0 || labels[nidx] !== 0) continue;
+        labels[nidx] = lbl;
+        stack.push(nidx);
+        count++;
+      }
+    }
+    blobBboxes.set(lbl, { x0, y0, x1, y1, count });
+  }
+
+  const results: { pixels: Uint8Array; bw: number; bh: number; sortKey: number }[] = [];
+
+  for (const [lbl, bbox] of blobBboxes.entries()) {
+    if (bbox.count < 100) continue;
+    if (bbox.count > totalPx * 0.6) continue;
+
+    const { x0, y0, x1, y1 } = bbox;
+    const bw = x1 - x0 + 1, bh2 = y1 - y0 + 1;
+    const result = new Uint8Array(bw * bh2);
+    let actualArea = 0;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (labels[y * cw + x] === lbl && thresh[y * cw + x] > 0) {
+          result[(y - y0) * bw + (x - x0)] = 255;
+          actualArea++;
+        }
+      }
+    }
+    if (actualArea >= 50) {
+      results.push({ pixels: result, bw, bh: bh2, sortKey: actualArea });
+    }
+  }
+
+  if (results.length === 0) return null;
+  results.sort((a, b) => b.sortKey - a.sortKey);
+  return results.slice(0, 8).map(r => ({ pixels: r.pixels, bw: r.bw, bh: r.bh }));
+}
+
 function extractSignatureBlob(img: Jimp): { pixels: Uint8Array; w: number; h: number } | null {
   const { gray, w, h } = jimpToGray(img);
-
   let blob = tryExtractBlob(gray, w, h, 15);
   if (!blob) blob = tryExtractBlob(gray, w, h, 10);
   if (!blob) blob = tryExtractBlob(gray, w, h, 20);
   if (!blob) return null;
-
   return { pixels: blob.pixels, w: blob.w, h: blob.h };
+}
+
+function extractAllSignatureBlobs(img: Jimp): { pixels: Uint8Array; w: number; h: number }[] {
+  const { gray, w, h } = jimpToGray(img);
+  for (const C of [15, 10, 20]) {
+    const blobs = tryExtractAllBlobs(gray, w, h, C);
+    if (blobs && blobs.length > 0) {
+      return blobs.map(b => ({ pixels: b.pixels, w: b.bw, h: b.bh }));
+    }
+  }
+  return [];
 }
 
 function normalizeSignature(bin: Uint8Array, w: number, h: number, targetW = 600, targetH = 250): Uint8Array | null {
@@ -404,6 +521,53 @@ function normalizeSignature(bin: Uint8Array, w: number, h: number, targetW = 600
     }
   }
   return canvas;
+}
+
+function normalizeSignatureTight(
+  bin: Uint8Array, w: number, h: number, maxW = 600, maxH = 400
+): { data: Uint8Array; w: number; h: number } | null {
+  let minX = w, maxX = 0, minY = h, maxY = 0, found = false;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (bin[y * w + x] > 0) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        found = true;
+      }
+    }
+  }
+  if (!found) return null;
+
+  const cropW = maxX - minX + 1;
+  const cropH = maxY - minY + 1;
+  const scale = Math.min(maxH / cropH, maxW / cropW);
+  const newW = Math.max(1, Math.round(cropW * scale));
+  const newH = Math.max(1, Math.round(cropH * scale));
+
+  const data = new Uint8Array(newW * newH);
+  for (let y = 0; y < newH; y++) {
+    for (let x = 0; x < newW; x++) {
+      const srcX = minX + Math.min(cropW - 1, Math.floor(x / scale));
+      const srcY = minY + Math.min(cropH - 1, Math.floor(y / scale));
+      data[y * newW + x] = bin[srcY * w + srcX];
+    }
+  }
+  return { data, w: newW, h: newH };
+}
+
+function resizeBin(bin: Uint8Array, srcW: number, srcH: number, dstW: number, dstH: number): Uint8Array {
+  const out = new Uint8Array(dstW * dstH);
+  const scaleX = srcW / dstW, scaleY = srcH / dstH;
+  for (let y = 0; y < dstH; y++) {
+    for (let x = 0; x < dstW; x++) {
+      const sx = Math.min(srcW - 1, Math.floor(x * scaleX));
+      const sy = Math.min(srcH - 1, Math.floor(y * scaleY));
+      out[y * dstW + x] = bin[sy * srcW + sx];
+    }
+  }
+  return out;
 }
 
 function zhangSuenSkeleton(bin: Uint8Array, w: number, h: number): Uint8Array {
@@ -522,36 +686,43 @@ function pixelSimilarity(img1: Uint8Array, img2: Uint8Array, n: number): number 
   return (inter / union) * 100;
 }
 
-function dilate1(bin: Uint8Array, w: number, h: number): Uint8Array {
-  const out = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (bin[y * w + x] === 0) continue;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const ny = y + dy, nx = x + dx;
-          if (ny >= 0 && ny < h && nx >= 0 && nx < w) out[ny * w + nx] = 255;
-        }
-      }
-    }
-  }
-  return out;
-}
+function computeScore(
+  blob1: { pixels: Uint8Array; w: number; h: number },
+  blob2: { pixels: Uint8Array; w: number; h: number },
+  mode: 'lenient' | 'strict' | 'super_lenient'
+): number {
+  const n1 = normalizeSignatureTight(blob1.pixels, blob1.w, blob1.h);
+  const n2 = normalizeSignatureTight(blob2.pixels, blob2.w, blob2.h);
+  if (!n1 || !n2) return 0;
 
-function dilate5(bin: Uint8Array, w: number, h: number): Uint8Array {
-  const out = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (bin[y * w + x] === 0) continue;
-      for (let dy = -4; dy <= 4; dy++) {
-        for (let dx = -4; dx <= 4; dx++) {
-          const ny = y + dy, nx = x + dx;
-          if (ny >= 0 && ny < h && nx >= 0 && nx < w) out[ny * w + nx] = 255;
-        }
-      }
-    }
+  const cW = Math.max(n1.w, n2.w);
+  const cH = Math.max(n1.h, n2.h);
+
+  const norm1 = (n1.w === cW && n1.h === cH) ? n1.data : resizeBin(n1.data, n1.w, n1.h, cW, cH);
+  const norm2 = (n2.w === cW && n2.h === cH) ? n2.data : resizeBin(n2.data, n2.w, n2.h, cW, cH);
+
+  const skel1 = zhangSuenSkeleton(norm1, cW, cH);
+  const skel2 = zhangSuenSkeleton(norm2, cW, cH);
+
+  const curveScore = curveProfileSimilarity(skel1, skel2, cW, cH);
+  const gridScore = gridDensitySimilarity(norm1, norm2, cW, cH);
+
+  if (mode === 'strict') {
+    const iouScore = pixelSimilarity(skel1, skel2, cW * cH);
+    return Math.min(100, Math.max(0, (curveScore * 0.60 + iouScore * 0.30 + gridScore * 0.10) * 1.05));
   }
-  return out;
+
+  if (mode === 'super_lenient') {
+    const dilSkel1 = dilate5(skel1, cW, cH);
+    const dilSkel2 = dilate5(skel2, cW, cH);
+    const iouScore = pixelSimilarity(dilSkel1, dilSkel2, cW * cH);
+    return Math.min(100, Math.max(0, (gridScore * 0.50 + iouScore * 0.30 + curveScore * 0.20) * 2.00));
+  }
+
+  const dilSkel1 = dilate1(skel1, cW, cH);
+  const dilSkel2 = dilate1(skel2, cW, cH);
+  const iouScore = pixelSimilarity(dilSkel1, dilSkel2, cW * cH);
+  return Math.min(100, Math.max(0, (gridScore * 0.50 + iouScore * 0.30 + curveScore * 0.20) * 1.40));
 }
 
 async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer, mode: 'lenient' | 'strict' | 'super_lenient' = 'lenient'): Promise<number> {
@@ -560,40 +731,39 @@ async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer, mode: 'le
   raw1.grayscale();
   raw2.grayscale();
 
-  const blob1 = extractSignatureBlob(raw1);
-  const blob2 = extractSignatureBlob(raw2);
-  if (!blob1 || !blob2) return 0;
+  const blobs1 = extractAllSignatureBlobs(raw1);
+  const blobs2 = extractAllSignatureBlobs(raw2);
+  if (blobs1.length === 0 || blobs2.length === 0) return 0;
 
-  const TARGET_W = 600, TARGET_H = 250;
-  const norm1 = normalizeSignature(blob1.pixels, blob1.w, blob1.h, TARGET_W, TARGET_H);
-  const norm2 = normalizeSignature(blob2.pixels, blob2.w, blob2.h, TARGET_W, TARGET_H);
-  if (!norm1 || !norm2) return 0;
+  return computeScore(blobs1[0], blobs2[0], mode);
+}
 
-  const skel1 = zhangSuenSkeleton(norm1, TARGET_W, TARGET_H);
-  const skel2 = zhangSuenSkeleton(norm2, TARGET_W, TARGET_H);
+async function compareRefVsAllBlobs(
+  buf1: ArrayBuffer,
+  verifyBuf: ArrayBuffer,
+  mode: 'lenient' | 'strict' | 'super_lenient'
+): Promise<{ score: number; subScores?: number[] }> {
+  const raw1 = await Jimp.read(Buffer.from(buf1));
+  raw1.grayscale();
+  const refBlobs = extractAllSignatureBlobs(raw1);
+  if (refBlobs.length === 0) return { score: 0 };
+  const refBlob = refBlobs[0];
 
-  const curveScore = curveProfileSimilarity(skel1, skel2, TARGET_W, TARGET_H);
-  const gridScore = gridDensitySimilarity(norm1, norm2, TARGET_W, TARGET_H);
+  const raw2 = await Jimp.read(Buffer.from(verifyBuf));
+  raw2.grayscale();
+  const verifyBlobs = extractAllSignatureBlobs(raw2);
+  if (verifyBlobs.length === 0) return { score: 0 };
 
-  if (mode === 'strict') {
-    const iouScore = pixelSimilarity(skel1, skel2, TARGET_W * TARGET_H);
-    const rawScore = curveScore * 0.60 + iouScore * 0.30 + gridScore * 0.10;
-    return Math.min(100, Math.max(0, rawScore * 1.05));
+  if (verifyBlobs.length === 1) {
+    return { score: computeScore(refBlob, verifyBlobs[0], mode) };
   }
 
-  if (mode === 'super_lenient') {
-    const dilSkel1 = dilate5(skel1, TARGET_W, TARGET_H);
-    const dilSkel2 = dilate5(skel2, TARGET_W, TARGET_H);
-    const iouScore = pixelSimilarity(dilSkel1, dilSkel2, TARGET_W * TARGET_H);
-    const rawScore = gridScore * 0.50 + iouScore * 0.30 + curveScore * 0.20;
-    return Math.min(100, Math.max(0, rawScore * 2.00));
-  }
-
-  const dilSkel1 = dilate1(skel1, TARGET_W, TARGET_H);
-  const dilSkel2 = dilate1(skel2, TARGET_W, TARGET_H);
-  const iouScore = pixelSimilarity(dilSkel1, dilSkel2, TARGET_W * TARGET_H);
-  const rawScore = gridScore * 0.50 + iouScore * 0.30 + curveScore * 0.20;
-  return Math.min(100, Math.max(0, rawScore * 1.40));
+  const rawScores = verifyBlobs.map(vb => computeScore(refBlob, vb, mode));
+  const avgScore = rawScores.reduce((a, b) => a + b, 0) / rawScores.length;
+  return {
+    score: avgScore,
+    subScores: rawScores.map(s => Math.round(s * 10) / 10),
+  };
 }
 
 async function cropImageToMask(
@@ -618,6 +788,7 @@ interface MaskBreakdownItem {
   page: number;
   score: number;
   sigBytes: Uint8Array;
+  subScores?: number[];
 }
 
 async function generatePDF(
@@ -750,11 +921,14 @@ async function generatePDF(
     breakdownPage.drawText(`${file2Name}  —  ${maskBreakdown.length} masks analyzed`, { x: 40, y: bpHeight - 48, size: 9, font: fontReg, color: rgb(0.8, 0.95, 1.0) });
 
     let rowY = bpHeight - 80;
-    const rowH = 110;
     const imgColW = 160;
     const textColX = 40 + imgColW + 20;
 
     for (const item of maskBreakdown) {
+      const hasSubScores = item.subScores && item.subScores.length > 1;
+      const subScoreLines = hasSubScores ? Math.ceil(item.subScores!.length / 4) : 0;
+      const rowH = 115 + subScoreLines * 14;
+
       if (rowY - rowH < 40) {
         const extraPage = doc.addPage(PageSizes.A4);
         const epWidth = extraPage.getSize().width;
@@ -803,15 +977,36 @@ async function generatePDF(
       const itemLabel = item.score >= 75 ? "High Confidence Match" : item.score >= 50 ? "Moderate Match" : "Low Match / Mismatch";
       currentPage.drawText(itemLabel, { x: textColX, y: rowY - 68, size: 9, font, color: itemScoreColor });
 
+      if (hasSubScores) {
+        const subLabel = `${item.subScores!.length} signatures scored individually — averaged`;
+        currentPage.drawText(subLabel, {
+          x: textColX, y: rowY - 80, size: 7, font: fontReg, color: muted
+        });
+
+        const chunkSize = 4;
+        for (let lineIdx = 0; lineIdx < subScoreLines; lineIdx++) {
+          const chunk = item.subScores!.slice(lineIdx * chunkSize, (lineIdx + 1) * chunkSize);
+          const lineText = chunk.map((s, ci) => {
+            const globalIdx = lineIdx * chunkSize + ci + 1;
+            const lbl = s >= 75 ? 'H' : s >= 50 ? 'M' : 'L';
+            return `Sig ${globalIdx}: ${s.toFixed(1)}% [${lbl}]`;
+          }).join('   ');
+          currentPage.drawText(lineText, {
+            x: textColX, y: rowY - 91 - lineIdx * 12, size: 7.5, font: fontReg,
+            color: rgb(0.75, 0.82, 0.90)
+          });
+        }
+      }
+
+      const barTopOffset = hasSubScores ? 96 + subScoreLines * 12 : 86;
       const barW2 = bpWidth - textColX - 50;
-      currentPage.drawRectangle({ x: textColX, y: rowY - 82, width: barW2, height: 7, color: borderColor });
-      currentPage.drawRectangle({ x: textColX, y: rowY - 82, width: Math.max(2, barW2 * (item.score / 100)), height: 7, color: itemScoreColor });
+      currentPage.drawRectangle({ x: textColX, y: rowY - barTopOffset, width: barW2, height: 7, color: borderColor });
+      currentPage.drawRectangle({ x: textColX, y: rowY - barTopOffset, width: Math.max(2, barW2 * (item.score / 100)), height: 7, color: itemScoreColor });
 
       rowY -= rowH + 8;
     }
 
     const lastPage = doc.getPage(doc.getPageCount() - 1);
-    const lastHeight = lastPage.getSize().height;
     const summaryY = Math.max(60, rowY - 20);
     lastPage.drawRectangle({ x: 30, y: summaryY - 50, width: bpWidth - 60, height: 50, color: cardBg, borderColor, borderWidth: 1 });
     lastPage.drawText("FINAL AVERAGED SCORE", { x: 50, y: summaryY - 14, size: 9, font, color: muted });
@@ -1028,7 +1223,7 @@ Deno.serve(async (req: Request) => {
 
     let confidenceScore: number;
     let maskBreakdownItems: MaskBreakdownItem[] | undefined;
-    let maskBreakdownForResponse: { maskIndex: number; maskLabel: string; page: number; score: number }[] | undefined;
+    let maskBreakdownForResponse: { maskIndex: number; maskLabel: string; page: number; score: number; subScores?: number[] }[] | undefined;
     let primarySig2Bytes: Uint8Array;
 
     if (isMultiMask && multiMaskBufs.length > 0) {
@@ -1038,20 +1233,24 @@ Deno.serve(async (req: Request) => {
 
       for (let i = 0; i < multiMaskBufs.length; i++) {
         const item = multiMaskBufs[i];
-        const s = await compareSignatures(buf1, item.buf, mode);
+        const result = await compareRefVsAllBlobs(buf1, item.buf, mode);
+        const s = result.score;
         scores.push(s);
+
         maskBreakdownItems.push({
           maskIndex: i,
           maskLabel: item.label,
           page: item.page,
           score: Math.round(s * 10) / 10,
           sigBytes: new Uint8Array(item.buf),
+          subScores: result.subScores,
         });
         maskBreakdownForResponse.push({
           maskIndex: i,
           maskLabel: item.label,
           page: item.page,
           score: Math.round(s * 10) / 10,
+          subScores: result.subScores,
         });
       }
 
