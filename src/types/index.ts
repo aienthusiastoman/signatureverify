@@ -57,10 +57,10 @@ export interface ProcessResponse {
   resultUrl: string;
   matchedPage1?: number;
   matchedPage2?: number;
-  mode?: 'lenient' | 'strict';
+  mode?: 'lenient' | 'strict' | 'super_lenient';
 }
 
-export type CompareMode = 'lenient' | 'strict';
+export type CompareMode = 'lenient' | 'strict' | 'super_lenient';
 
 export type AppView =
   | 'app'

@@ -477,7 +477,23 @@ function dilate1(bin: Uint8Array, w: number, h: number): Uint8Array {
   return out;
 }
 
-async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer, mode: 'lenient' | 'strict' = 'lenient'): Promise<number> {
+function dilate5(bin: Uint8Array, w: number, h: number): Uint8Array {
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (bin[y * w + x] === 0) continue;
+      for (let dy = -4; dy <= 4; dy++) {
+        for (let dx = -4; dx <= 4; dx++) {
+          const ny = y + dy, nx = x + dx;
+          if (ny >= 0 && ny < h && nx >= 0 && nx < w) out[ny * w + nx] = 255;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer, mode: 'lenient' | 'strict' | 'super_lenient' = 'lenient'): Promise<number> {
   const raw1 = await Jimp.read(Buffer.from(buf1));
   const raw2 = await Jimp.read(Buffer.from(buf2));
   raw1.grayscale();
@@ -502,6 +518,14 @@ async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer, mode: 'le
     const iouScore = pixelSimilarity(skel1, skel2, TARGET_W * TARGET_H);
     const rawScore = curveScore * 0.60 + iouScore * 0.30 + gridScore * 0.10;
     return Math.min(100, Math.max(0, rawScore * 1.05));
+  }
+
+  if (mode === 'super_lenient') {
+    const dilSkel1 = dilate5(skel1, TARGET_W, TARGET_H);
+    const dilSkel2 = dilate5(skel2, TARGET_W, TARGET_H);
+    const iouScore = pixelSimilarity(dilSkel1, dilSkel2, TARGET_W * TARGET_H);
+    const rawScore = gridScore * 0.50 + iouScore * 0.30 + curveScore * 0.20;
+    return Math.min(100, Math.max(0, rawScore * 2.00));
   }
 
   const dilSkel1 = dilate1(skel1, TARGET_W, TARGET_H);
@@ -537,7 +561,7 @@ async function generatePDF(
   timestamp: string,
   matchedPage1?: number,
   matchedPage2?: number,
-  mode: 'lenient' | 'strict' = 'lenient'
+  mode: 'lenient' | 'strict' | 'super_lenient' = 'lenient'
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const page = doc.addPage(PageSizes.A4);
@@ -622,9 +646,11 @@ async function generatePDF(
 
   const analysisY = docSectionY - 270;
   page.drawRectangle({ x: 30, y: analysisY - 90, width: width - 60, height: 80, color: cardBg, borderColor, borderWidth: 1 });
-  const modeLabel = mode === 'strict' ? 'STRICT' : 'LENIENT';
+  const modeLabel = mode === 'strict' ? 'STRICT' : mode === 'super_lenient' ? 'SUPER LENIENT' : 'LENIENT';
   const modeDesc = mode === 'strict'
     ? 'Strict mode: curve-profile Pearson (60%) + skeleton IoU (30%) + grid density (10%). Boost ×1.05.'
+    : mode === 'super_lenient'
+    ? 'Super Lenient mode: grid density (50%) + wide-dilated skeleton IoU (30%) + curve profile (20%). Boost ×2.00.'
     : 'Lenient mode: grid density correlation (50%) + dilated skeleton IoU (30%) + curve profile (20%). Boost ×1.40.';
   const thresholdDesc = mode === 'strict'
     ? 'Thresholds: 0-59% Mismatch  |  60-79% Moderate Match  |  80-100% High Confidence Match'
@@ -645,7 +671,7 @@ async function generatePDF(
   return doc.save();
 }
 
-async function resolveImageBuffers(formData: FormData): Promise<{ buf1: ArrayBuffer; buf2: ArrayBuffer; file1Name: string; file2Name: string; file1Path: string; file2Path: string; mask1Raw: string | null; mask2Raw: string | null; scaleFile2: number; matchedPage1: number | undefined; matchedPage2: number | undefined; mode: 'lenient' | 'strict' }> {
+async function resolveImageBuffers(formData: FormData): Promise<{ buf1: ArrayBuffer; buf2: ArrayBuffer; file1Name: string; file2Name: string; file1Path: string; file2Path: string; mask1Raw: string | null; mask2Raw: string | null; scaleFile2: number; matchedPage1: number | undefined; matchedPage2: number | undefined; mode: 'lenient' | 'strict' | 'super_lenient' }> {
   const file1Name = (formData.get("file1_name") as string) || "document1";
   const file2Name = (formData.get("file2_name") as string) || "document2";
   const file1Path = (formData.get("file1_path") as string) || "";
@@ -658,7 +684,7 @@ async function resolveImageBuffers(formData: FormData): Promise<{ buf1: ArrayBuf
   const matchedPage1 = mp1 ? parseInt(mp1) : undefined;
   const matchedPage2 = mp2 ? parseInt(mp2) : undefined;
   const modeRaw = (formData.get("mode") as string) || "lenient";
-  const mode: 'lenient' | 'strict' = modeRaw === 'strict' ? 'strict' : 'lenient';
+  const mode: 'lenient' | 'strict' | 'super_lenient' = modeRaw === 'strict' ? 'strict' : modeRaw === 'super_lenient' ? 'super_lenient' : 'lenient';
 
   const sig1File = formData.get("signature1") as File | null;
   const sig2File = formData.get("signature2") as File | null;
@@ -682,7 +708,7 @@ async function resolveImageBuffers(formData: FormData): Promise<{ buf1: ArrayBuf
   return { buf1, buf2, file1Name, file2Name, file1Path, file2Path, mask1Raw, mask2Raw, scaleFile2, matchedPage1, matchedPage2, mode };
 }
 
-async function resolveFromJson(body: Record<string, unknown>): Promise<{ buf1: ArrayBuffer; buf2: ArrayBuffer; file1Name: string; file2Name: string; file1Path: string; file2Path: string; mask1Raw: string | null; mask2Raw: string | null; scaleFile2: number; templateId: string | null; matchedPage1: number | undefined; matchedPage2: number | undefined; mode: 'lenient' | 'strict' }> {
+async function resolveFromJson(body: Record<string, unknown>): Promise<{ buf1: ArrayBuffer; buf2: ArrayBuffer; file1Name: string; file2Name: string; file1Path: string; file2Path: string; mask1Raw: string | null; mask2Raw: string | null; scaleFile2: number; templateId: string | null; matchedPage1: number | undefined; matchedPage2: number | undefined; mode: 'lenient' | 'strict' | 'super_lenient' }> {
   const file1Name = (body.file1_name as string) || "document1";
   const file2Name = (body.file2_name as string) || "document2";
   const file1Path = (body.file1_path as string) || "";
@@ -693,7 +719,7 @@ async function resolveFromJson(body: Record<string, unknown>): Promise<{ buf1: A
   const templateId = (body.template_id as string) || null;
   const matchedPage1 = body.matched_page1 !== undefined ? Number(body.matched_page1) : undefined;
   const matchedPage2 = body.matched_page2 !== undefined ? Number(body.matched_page2) : undefined;
-  const mode: 'lenient' | 'strict' = body.mode === 'strict' ? 'strict' : 'lenient';
+  const mode: 'lenient' | 'strict' | 'super_lenient' = body.mode === 'strict' ? 'strict' : body.mode === 'super_lenient' ? 'super_lenient' : 'lenient';
 
   const b64f1 = body.file1_base64 as string | null;
   const b64f2 = body.file2_base64 as string | null;
@@ -725,7 +751,7 @@ Deno.serve(async (req: Request) => {
     let scaleFile2: number;
     let matchedPage1: number | undefined;
     let matchedPage2: number | undefined;
-    let mode: 'lenient' | 'strict' = 'lenient';
+    let mode: 'lenient' | 'strict' | 'super_lenient' = 'lenient';
 
     if (contentType.includes("application/json")) {
       const body = await req.json() as Record<string, unknown>;

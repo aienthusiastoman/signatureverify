@@ -6,7 +6,7 @@ import { renderPdfPageToCanvas, canvasToBlob, findPageByAnchorText, findPageBySi
 import type { SavedTemplate, MaskRect } from '../types';
 
 type Language = 'curl' | 'javascript' | 'python' | 'php' | 'go';
-type CompareMode = 'lenient' | 'strict';
+type CompareMode = 'lenient' | 'strict' | 'super_lenient';
 
 const LANG_LABELS: Record<Language, string> = {
   curl: 'cURL',
@@ -510,6 +510,17 @@ export default function ApiTestPage() {
                 >
                   <p className="font-bold">Strict</p>
                   <p className="opacity-60 mt-0.5 font-normal">Precise curve matching</p>
+                </button>
+                <button
+                  onClick={() => setCompareMode('super_lenient')}
+                  className={`flex-1 px-3 py-2.5 rounded-xl text-xs font-semibold text-left transition-all border ${
+                    compareMode === 'super_lenient'
+                      ? 'bg-sky-500/15 border-sky-500/50 text-white'
+                      : 'bg-slate-800/60 border-slate-700/40 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <p className="font-bold">Super Lenient</p>
+                  <p className="opacity-60 mt-0.5 font-normal">2× boost, wide dilation</p>
                 </button>
               </div>
             </div>

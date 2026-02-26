@@ -315,6 +315,17 @@ function CompareToolContent() {
                 <p className="font-bold text-sm">Strict</p>
                 <p className="text-xs opacity-70 mt-0.5">Precise curve matching — penalises stroke position and direction differences</p>
               </button>
+              <button
+                onClick={() => setCompareMode('super_lenient')}
+                className={`flex-1 rounded-xl px-4 py-3 text-left transition-all border ${
+                  compareMode === 'super_lenient'
+                    ? 'bg-sky-500/15 border-sky-500/50 text-white'
+                    : 'bg-slate-800/60 border-slate-700/40 text-slate-400 hover:text-white hover:border-slate-600'
+                }`}
+              >
+                <p className="font-bold text-sm">Super Lenient</p>
+                <p className="text-xs opacity-70 mt-0.5">2× boost with wide stroke dilation — best for noisy or ID-card backgrounds</p>
+              </button>
             </div>
           </div>
 
