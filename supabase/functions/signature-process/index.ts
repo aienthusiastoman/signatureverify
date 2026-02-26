@@ -22,7 +22,7 @@ function jimpToGray(img: Jimp): { gray: Uint8Array; w: number; h: number } {
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const { r, g, b } = Jimp.intToRGBA(img.getPixelColor(x, y));
-      gray[y * w + x] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+      gray[y * w + x] = Math.min(r, g, b);
     }
   }
   return { gray, w, h };
@@ -247,6 +247,64 @@ function dilate3(bin: Uint8Array, w: number, h: number): Uint8Array {
   return out;
 }
 
+function morphErodeGray(gray: Uint8Array, w: number, h: number, r: number): Float32Array {
+  const out = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let minVal = 255;
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const ny = Math.max(0, Math.min(h - 1, y + dy));
+          const nx = Math.max(0, Math.min(w - 1, x + dx));
+          const v = gray[ny * w + nx];
+          if (v < minVal) minVal = v;
+        }
+      }
+      out[y * w + x] = minVal;
+    }
+  }
+  return out;
+}
+
+function morphDilateGrayF(gray: Float32Array, w: number, h: number, r: number): Float32Array {
+  const out = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let maxVal = 0;
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const ny = Math.max(0, Math.min(h - 1, y + dy));
+          const nx = Math.max(0, Math.min(w - 1, x + dx));
+          const v = gray[ny * w + nx];
+          if (v > maxVal) maxVal = v;
+        }
+      }
+      out[y * w + x] = maxVal;
+    }
+  }
+  return out;
+}
+
+function blackHatGray(gray: Uint8Array, w: number, h: number, r: number): Uint8Array {
+  const eroded = morphErodeGray(gray, w, h, r);
+  const closed = morphDilateGrayF(eroded, w, h, r);
+  const out = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    out[i] = Math.max(0, Math.min(255, Math.round(closed[i] - gray[i])));
+  }
+  return out;
+}
+
+function percentileMaskPrewhiten(gray: Uint8Array, blackHat: Uint8Array, keepFraction: number): Uint8Array {
+  const sorted = Array.from(blackHat).sort((a, b) => b - a);
+  const cutoff = sorted[Math.floor(keepFraction * sorted.length)] ?? 0;
+  const out = new Uint8Array(gray);
+  for (let i = 0; i < out.length; i++) {
+    if (blackHat[i] < cutoff) out[i] = 255;
+  }
+  return out;
+}
+
 function inwardCropGray(gray: Uint8Array, w: number, h: number, margin: number): { gray: Uint8Array; w: number; h: number } {
   const x0 = Math.min(margin, Math.floor(w / 4));
   const y0 = Math.min(margin, Math.floor(h / 4));
@@ -267,7 +325,10 @@ function tryExtractBlob(gray: Uint8Array, w: number, h: number, C: number): { pi
   const cropped = inwardCropGray(gray, w, h, 6);
   const cg = cropped.gray, cw = cropped.w, ch = cropped.h;
 
-  const thresh = adaptiveThresholdGaussian(cg, cw, ch, 31, C);
+  const bh = blackHatGray(cg, cw, ch, 3);
+  const prewhitened = percentileMaskPrewhiten(cg, bh, 0.30);
+
+  const thresh = adaptiveThresholdGaussian(prewhitened, cw, ch, 31, C);
 
   const hLines = morphOpenH(thresh, cw, ch, Math.max(20, Math.floor(cw * 0.15)));
   subtractBin(thresh, hLines);
