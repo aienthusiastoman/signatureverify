@@ -459,7 +459,7 @@ function tryExtractAllBlobs(
 
   if (results.length === 0) return null;
   results.sort((a, b) => b.sortKey - a.sortKey);
-  return results.slice(0, 8).map(r => ({ pixels: r.pixels, bw: r.bw, bh: r.bh }));
+  return results.slice(0, 4).map(r => ({ pixels: r.pixels, bw: r.bw, bh: r.bh }));
 }
 
 function extractSignatureBlob(img: Jimp): { pixels: Uint8Array; w: number; h: number } | null {
@@ -524,7 +524,7 @@ function normalizeSignature(bin: Uint8Array, w: number, h: number, targetW = 600
 }
 
 function normalizeSignatureTight(
-  bin: Uint8Array, w: number, h: number, maxW = 600, maxH = 400
+  bin: Uint8Array, w: number, h: number, maxW = 400, maxH = 300
 ): { data: Uint8Array; w: number; h: number } | null {
   let minX = w, maxX = 0, minY = h, maxY = 0, found = false;
   for (let y = 0; y < h; y++) {
@@ -723,6 +723,35 @@ function computeScore(
   const dilSkel2 = dilate1(skel2, cW, cH);
   const iouScore = pixelSimilarity(dilSkel1, dilSkel2, cW * cH);
   return Math.min(100, Math.max(0, (gridScore * 0.50 + iouScore * 0.30 + curveScore * 0.20) * 1.40));
+}
+
+function computeScoreFastNorm(
+  refNorm: { data: Uint8Array; w: number; h: number },
+  vBlob: { pixels: Uint8Array; w: number; h: number },
+  mode: 'lenient' | 'strict' | 'super_lenient'
+): number {
+  const n2 = normalizeSignatureTight(vBlob.pixels, vBlob.w, vBlob.h, 300, 200);
+  if (!n2) return 0;
+
+  const cW = Math.max(refNorm.w, n2.w);
+  const cH = Math.max(refNorm.h, n2.h);
+
+  const norm1 = (refNorm.w === cW && refNorm.h === cH) ? refNorm.data : resizeBin(refNorm.data, refNorm.w, refNorm.h, cW, cH);
+  const norm2 = (n2.w === cW && n2.h === cH) ? n2.data : resizeBin(n2.data, n2.w, n2.h, cW, cH);
+
+  const gridScore = gridDensitySimilarity(norm1, norm2, cW, cH);
+
+  if (mode === 'super_lenient') {
+    const dil5_1 = dilate5(norm1, cW, cH);
+    const dil5_2 = dilate5(norm2, cW, cH);
+    const iouScore = pixelSimilarity(dil5_1, dil5_2, cW * cH);
+    return Math.min(100, Math.max(0, (gridScore * 0.50 + iouScore * 0.50) * 1.8));
+  }
+
+  const dil1 = dilate1(norm1, cW, cH);
+  const dil2 = dilate1(norm2, cW, cH);
+  const iouScore = pixelSimilarity(dil1, dil2, cW * cH);
+  return Math.min(100, Math.max(0, (gridScore * 0.55 + iouScore * 0.45) * 1.40));
 }
 
 async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer, mode: 'lenient' | 'strict' | 'super_lenient' = 'lenient'): Promise<number> {
@@ -1231,26 +1260,46 @@ Deno.serve(async (req: Request) => {
       maskBreakdownItems = [];
       maskBreakdownForResponse = [];
 
+      const refRaw = await Jimp.read(Buffer.from(buf1));
+      refRaw.grayscale();
+      const refBlobs = extractAllSignatureBlobs(refRaw);
+      const refBlob = refBlobs.length > 0 ? refBlobs[0] : null;
+      const refNorm = refBlob ? normalizeSignatureTight(refBlob.pixels, refBlob.w, refBlob.h, 300, 200) : null;
+
       for (let i = 0; i < multiMaskBufs.length; i++) {
         const item = multiMaskBufs[i];
-        const result = await compareRefVsAllBlobs(buf1, item.buf, mode);
-        const s = result.score;
-        scores.push(s);
+        let s = 0;
+        let subScores: number[] | undefined;
 
+        const verifyRaw = await Jimp.read(Buffer.from(item.buf));
+        verifyRaw.grayscale();
+        const verifyBlobs = extractAllSignatureBlobs(verifyRaw);
+
+        if (refNorm && verifyBlobs.length > 1) {
+          const rawScores = verifyBlobs.map(vb => computeScoreFastNorm(refNorm, vb, mode));
+          subScores = rawScores.map(sc => Math.round(sc * 10) / 10);
+          s = rawScores.reduce((a, b) => a + b, 0) / rawScores.length;
+        } else if (refBlob && verifyBlobs.length === 1) {
+          s = computeScore(refBlob, verifyBlobs[0], mode);
+        } else if (refNorm && verifyBlobs.length === 0) {
+          s = 0;
+        }
+
+        scores.push(s);
         maskBreakdownItems.push({
           maskIndex: i,
           maskLabel: item.label,
           page: item.page,
           score: Math.round(s * 10) / 10,
           sigBytes: new Uint8Array(item.buf),
-          subScores: result.subScores,
+          subScores,
         });
         maskBreakdownForResponse.push({
           maskIndex: i,
           maskLabel: item.label,
           page: item.page,
           score: Math.round(s * 10) / 10,
-          subScores: result.subScores,
+          subScores,
         });
       }
 
