@@ -197,20 +197,93 @@ function extractLargestBlob(bin: Uint8Array, w: number, h: number): { pixels: Ui
   return { pixels: result, area: bestArea };
 }
 
-function extractSignatureBlob(img: Jimp): { pixels: Uint8Array; w: number; h: number } | null {
-  const { gray, w, h } = jimpToGray(img);
+function removeSmallBlobsInPlace(bin: Uint8Array, w: number, h: number, minArea: number): void {
+  const labels = new Int32Array(w * h);
+  let labelId = 0;
+  const blobMap = new Map<number, number[]>();
 
-  const thresh = adaptiveThresholdGaussian(gray, w, h, 31, 15);
+  for (let i = 0; i < w * h; i++) {
+    if (bin[i] === 0 || labels[i] !== 0) continue;
+    labelId++;
+    const stack = [i];
+    labels[i] = labelId;
+    const pixels = [i];
+    while (stack.length > 0) {
+      const idx = stack.pop()!;
+      const cx = idx % w, cy = Math.floor(idx / w);
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]] as [number,number][]) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+        const nidx = ny * w + nx;
+        if (bin[nidx] === 0 || labels[nidx] !== 0) continue;
+        labels[nidx] = labelId;
+        stack.push(nidx);
+        pixels.push(nidx);
+      }
+    }
+    blobMap.set(labelId, pixels);
+  }
+
+  for (const pixels of blobMap.values()) {
+    if (pixels.length < minArea) {
+      for (const idx of pixels) bin[idx] = 0;
+    }
+  }
+}
+
+function dilate3(bin: Uint8Array, w: number, h: number): Uint8Array {
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (bin[y * w + x] === 0) continue;
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const ny = y + dy, nx = x + dx;
+          if (ny >= 0 && ny < h && nx >= 0 && nx < w) out[ny * w + nx] = 255;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function tryExtractBlob(gray: Uint8Array, w: number, h: number, C: number): { pixels: Uint8Array; area: number } | null {
+  const thresh = adaptiveThresholdGaussian(gray, w, h, 31, C);
 
   const hLines = morphOpenH(thresh, w, h, 80);
   subtractBin(thresh, hLines);
-
   const vLines = morphOpenV(thresh, w, h, 80);
   subtractBin(thresh, vLines);
 
-  const { pixels, area } = extractLargestBlob(thresh, w, h);
-  if (area < 800) return null;
-  return { pixels, w, h };
+  removeSmallBlobsInPlace(thresh, w, h, 20);
+
+  const dilated = dilate3(thresh, w, h);
+  const { pixels: blobMask, area: blobArea } = extractLargestBlob(dilated, w, h);
+  if (blobArea < 100) return null;
+
+  const totalPixels = w * h;
+  if (blobArea > totalPixels * 0.6) return null;
+
+  const result = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    result[i] = blobMask[i] > 0 ? thresh[i] : 0;
+  }
+  let actualArea = 0;
+  for (let i = 0; i < w * h; i++) if (result[i] > 0) actualArea++;
+  if (actualArea < 50) return null;
+
+  return { pixels: result, area: actualArea };
+}
+
+function extractSignatureBlob(img: Jimp): { pixels: Uint8Array; w: number; h: number } | null {
+  const { gray, w, h } = jimpToGray(img);
+
+  let blob = tryExtractBlob(gray, w, h, 15);
+  if (!blob) blob = tryExtractBlob(gray, w, h, 10);
+  if (!blob) blob = tryExtractBlob(gray, w, h, 20);
+  if (!blob) return null;
+
+  return { pixels: blob.pixels, w, h };
 }
 
 function normalizeSignature(bin: Uint8Array, w: number, h: number, targetW = 600, targetH = 250): Uint8Array | null {
@@ -320,6 +393,34 @@ function curveProfileSimilarity(sig1: Uint8Array, sig2: Uint8Array, w: number, h
   return Math.max(0, corr) * 100;
 }
 
+function pixelSimilarity(img1: Uint8Array, img2: Uint8Array, n: number): number {
+  let inter = 0, union = 0;
+  for (let i = 0; i < n; i++) {
+    const a = img1[i] > 0 ? 1 : 0;
+    const b = img2[i] > 0 ? 1 : 0;
+    if (a && b) inter++;
+    if (a || b) union++;
+  }
+  if (union === 0) return 0;
+  return (inter / union) * 100;
+}
+
+function dilate1(bin: Uint8Array, w: number, h: number): Uint8Array {
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (bin[y * w + x] === 0) continue;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const ny = y + dy, nx = x + dx;
+          if (ny >= 0 && ny < h && nx >= 0 && nx < w) out[ny * w + nx] = 255;
+        }
+      }
+    }
+  }
+  return out;
+}
+
 async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer): Promise<number> {
   const raw1 = await Jimp.read(Buffer.from(buf1));
   const raw2 = await Jimp.read(Buffer.from(buf2));
@@ -338,7 +439,13 @@ async function compareSignatures(buf1: ArrayBuffer, buf2: ArrayBuffer): Promise<
   const skel1 = zhangSuenSkeleton(norm1, TARGET_W, TARGET_H);
   const skel2 = zhangSuenSkeleton(norm2, TARGET_W, TARGET_H);
 
-  const rawScore = curveProfileSimilarity(skel1, skel2, TARGET_W, TARGET_H);
+  const curveScore = curveProfileSimilarity(skel1, skel2, TARGET_W, TARGET_H);
+
+  const dilSkel1 = dilate1(skel1, TARGET_W, TARGET_H);
+  const dilSkel2 = dilate1(skel2, TARGET_W, TARGET_H);
+  const iouScore = pixelSimilarity(dilSkel1, dilSkel2, TARGET_W * TARGET_H);
+
+  const rawScore = curveScore * 0.6 + iouScore * 0.4;
   return Math.min(100, Math.max(0, rawScore * 1.25));
 }
 
