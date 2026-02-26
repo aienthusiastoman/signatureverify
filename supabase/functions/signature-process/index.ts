@@ -816,6 +816,7 @@ interface MaskBreakdownItem {
   maskLabel: string;
   page: number;
   score: number;
+  weight?: number;
   sigBytes: Uint8Array;
   subScores?: number[];
 }
@@ -869,7 +870,11 @@ async function generatePDF(
   page.drawText(scoreLabel, { x: 180, y: scoreSectionY + 28, size: 11, font, color: scoreColor });
 
   if (maskBreakdown && maskBreakdown.length > 1) {
-    page.drawText(`Average of ${maskBreakdown.length} mask scores`, { x: 180, y: scoreSectionY + 12, size: 8, font: fontReg, color: muted });
+    const hasCustomWeights = maskBreakdown.some(m => m.weight !== undefined);
+    const subtitleText = hasCustomWeights
+      ? `Weighted average of ${maskBreakdown.length} mask scores`
+      : `Average of ${maskBreakdown.length} mask scores`;
+    page.drawText(subtitleText, { x: 180, y: scoreSectionY + 12, size: 8, font: fontReg, color: muted });
   }
 
   const barX = 180, barY = scoreSectionY + 10, barW = width - 230, barH = 10;
@@ -940,6 +945,9 @@ async function generatePDF(
   });
 
   if (maskBreakdown && maskBreakdown.length > 1) {
+    const hasCustomWeights = maskBreakdown.some(m => m.weight !== undefined);
+    const totalWeight = maskBreakdown.reduce((sum, m) => sum + (m.weight ?? 1), 0);
+
     const breakdownPage = doc.addPage(PageSizes.A4);
     const bpWidth = breakdownPage.getSize().width;
     const bpHeight = breakdownPage.getSize().height;
@@ -947,7 +955,10 @@ async function generatePDF(
     breakdownPage.drawRectangle({ x: 0, y: 0, width: bpWidth, height: bpHeight, color: darkBg });
     breakdownPage.drawRectangle({ x: 0, y: bpHeight - 60, width: bpWidth, height: 60, color: teal });
     breakdownPage.drawText("Mask-by-Mask Breakdown", { x: 40, y: bpHeight - 28, size: 18, font, color: white });
-    breakdownPage.drawText(`${file2Name}  —  ${maskBreakdown.length} masks analyzed`, { x: 40, y: bpHeight - 48, size: 9, font: fontReg, color: rgb(0.8, 0.95, 1.0) });
+    const breakdownSubtitle = hasCustomWeights
+      ? `${file2Name}  —  ${maskBreakdown.length} masks  ·  weighted`
+      : `${file2Name}  —  ${maskBreakdown.length} masks analyzed`;
+    breakdownPage.drawText(breakdownSubtitle, { x: 40, y: bpHeight - 48, size: 9, font: fontReg, color: rgb(0.8, 0.95, 1.0) });
 
     let rowY = bpHeight - 80;
     const imgColW = 160;
@@ -986,6 +997,13 @@ async function generatePDF(
       currentPage.drawText(`Mask ${item.maskIndex + 1}: ${maskLabelText}`, {
         x: 44, y: rowY - 14, size: 9, font, color: white
       });
+      if (hasCustomWeights) {
+        const w = item.weight ?? 1;
+        const pct = Math.round((w / totalWeight) * 100);
+        currentPage.drawText(`${pct}% weight`, {
+          x: bpWidth - 130, y: rowY - 14, size: 8, font: fontReg, color: rgb(0.0, 0.75, 0.65)
+        });
+      }
       currentPage.drawText(`Page ${item.page}`, {
         x: bpWidth - 90, y: rowY - 14, size: 8, font: fontReg, color: rgb(0.0, 0.75, 0.65)
       });
@@ -1038,9 +1056,19 @@ async function generatePDF(
     const lastPage = doc.getPage(doc.getPageCount() - 1);
     const summaryY = Math.max(60, rowY - 20);
     lastPage.drawRectangle({ x: 30, y: summaryY - 50, width: bpWidth - 60, height: 50, color: cardBg, borderColor, borderWidth: 1 });
-    lastPage.drawText("FINAL AVERAGED SCORE", { x: 50, y: summaryY - 14, size: 9, font, color: muted });
+    const summaryLabel = hasCustomWeights ? "FINAL WEIGHTED SCORE" : "FINAL AVERAGED SCORE";
+    lastPage.drawText(summaryLabel, { x: 50, y: summaryY - 14, size: 9, font, color: muted });
     lastPage.drawText(`${score.toFixed(1)}%`, { x: 50, y: summaryY - 38, size: 22, font, color: scoreColor });
-    lastPage.drawText(`= Average of ${maskBreakdown.map(m => m.score.toFixed(1) + '%').join(' + ')}`, {
+    let formulaText: string;
+    if (hasCustomWeights) {
+      const parts = maskBreakdown.map(m => `${(m.weight ?? 1).toFixed(1)}×${m.score.toFixed(1)}%`).join(' + ');
+      formulaText = `= (${parts}) ÷ ${totalWeight.toFixed(1)}`;
+    } else {
+      formulaText = `= Average of ${maskBreakdown.map(m => m.score.toFixed(1) + '%').join(' + ')}`;
+    }
+    const maxFormulaLen = 85;
+    const displayFormula = formulaText.length > maxFormulaLen ? formulaText.slice(0, maxFormulaLen - 3) + '...' : formulaText;
+    lastPage.drawText(displayFormula, {
       x: 150, y: summaryY - 30, size: 8, font: fontReg, color: muted
     });
   }
@@ -1304,6 +1332,7 @@ Deno.serve(async (req: Request) => {
           maskLabel: item.label,
           page: item.page,
           score: Math.round(s * 10) / 10,
+          weight: item.weight,
           sigBytes: new Uint8Array(item.buf),
           subScores,
         });
