@@ -221,6 +221,23 @@ export default function ThemingPage() {
       </div>
 
       <div className="rounded-2xl p-5 border space-y-4" style={panelStyle}>
+        <h2 className="font-bold text-sm" style={{ color: draft.fontColor }}>Site Name</h2>
+        <p className="text-xs -mt-2 opacity-50" style={{ color: draft.fontColor }}>The name displayed in the sidebar, landing page header, and browser title.</p>
+        <input
+          type="text"
+          value={draft.siteName}
+          onChange={e => update('siteName')(e.target.value)}
+          placeholder="SignatureVerify"
+          className="w-full text-sm rounded-xl px-4 py-3 outline-none transition-colors border placeholder:opacity-30"
+          style={{
+            backgroundColor: 'rgba(0,0,0,0.25)',
+            borderColor: 'rgba(255,255,255,0.1)',
+            color: draft.fontColor,
+          }}
+        />
+      </div>
+
+      <div className="rounded-2xl p-5 border space-y-4" style={panelStyle}>
         <h2 className="font-bold text-sm" style={{ color: draft.fontColor }}>Logo URL</h2>
         <p className="text-xs -mt-2 opacity-50" style={{ color: draft.fontColor }}>Provide a public image URL to replace the default icon in the sidebar.</p>
         <input

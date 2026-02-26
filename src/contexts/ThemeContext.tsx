@@ -7,6 +7,7 @@ export interface ThemeSettings {
   surfaceColor: string;
   fontColor: string;
   logoUrl: string;
+  siteName: string;
 }
 
 export interface ColorSwatch {
@@ -22,6 +23,7 @@ const DEFAULTS: ThemeSettings = {
   surfaceColor: '#0f172a',
   fontColor: '#f8fafc',
   logoUrl: '',
+  siteName: 'SignatureVerify',
 };
 
 interface ThemeContextType {
@@ -63,6 +65,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           surfaceColor: map['surface_color'] || DEFAULTS.surfaceColor,
           fontColor: map['font_color'] || DEFAULTS.fontColor,
           logoUrl: map['logo_url'] || DEFAULTS.logoUrl,
+          siteName: map['site_name'] || DEFAULTS.siteName,
         };
         setTheme(loaded);
         applyTheme(loaded);
@@ -87,6 +90,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       { key: 'surface_color', value: settings.surfaceColor },
       { key: 'font_color', value: settings.fontColor },
       { key: 'logo_url', value: settings.logoUrl },
+      { key: 'site_name', value: settings.siteName },
     ];
     for (const row of rows) {
       await supabase

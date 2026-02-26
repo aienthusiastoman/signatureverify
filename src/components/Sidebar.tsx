@@ -77,7 +77,7 @@ export default function Sidebar({ currentView, onNavigate }: Props) {
         )}
         <div className="min-w-0">
           <p className="font-black text-sm leading-tight truncate" style={{ color: theme.fontColor }}>
-            SignatureVerify
+            {theme.siteName || 'SignatureVerify'}
           </p>
           <p className="text-xs leading-tight mt-0.5 truncate" style={{ color: theme.fontColor, opacity: 0.45 }}>
             AI Comparison

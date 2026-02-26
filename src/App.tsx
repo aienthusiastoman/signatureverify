@@ -611,6 +611,7 @@ function AuthenticatedApp() {
 
 function AppContent() {
   const { user, loading: authLoading } = useAuth();
+  const { theme } = useTheme();
   const [rootView, setRootView] = useState<RootView>('landing');
 
   if (authLoading) {
@@ -627,21 +628,20 @@ function AppContent() {
       <LandingPage
         onGetStarted={() => setRootView('login')}
         onLogin={() => setRootView('login')}
+        siteName={theme.siteName || 'SignatureVerify'}
       />
     );
   }
 
-  return (
-    <ThemeProvider>
-      <AuthenticatedApp />
-    </ThemeProvider>
-  );
+  return <AuthenticatedApp />;
 }
 
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <ThemeProvider>
+        <AppContent />
+      </ThemeProvider>
     </AuthProvider>
   );
 }
