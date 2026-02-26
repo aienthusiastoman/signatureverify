@@ -479,6 +479,12 @@ export default function ApiTestPage() {
           formData.append(`signature2_${i}`, sigBlob, `sig2_${i}.png`);
           formData.append(`mask2_${i}_label`, maskDef.label);
           formData.append(`mask2_${i}_page`, String(resolvedPage));
+          if (maskDef.weight !== undefined) {
+            formData.append(`mask2_${i}_weight`, String(maskDef.weight));
+          }
+          if (maskDef.regionWeights && maskDef.regionWeights.length > 0) {
+            formData.append(`mask2_${i}_region_weights`, JSON.stringify(maskDef.regionWeights));
+          }
         }
         formData.append('mask2_count', String(masks2.length));
 
