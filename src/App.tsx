@@ -394,25 +394,43 @@ function CompareToolContent() {
             </div>
           )}
 
-          <div className="space-y-3">
-            <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide">
-              Document 2 — Masks to Verify ({multiRegions2.length})
-            </p>
-            {multiRegions2.map((mr, idx) => (
-              <div key={mr.maskDef.id} className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-slate-300 text-sm font-semibold">{mr.maskDef.label}</p>
-                  <span className="text-xs text-teal-400">Page {mr.page}</span>
-                </div>
-                <div className="bg-white rounded-lg p-2 inline-block">
-                  <img src={mr.dataUrl} alt={`Mask ${idx + 1} signature`} className="max-h-24 w-auto" />
-                </div>
-                {mr.maskDef.regions.length > 1 && (
-                  <p className="text-slate-500 text-xs">{mr.maskDef.regions.length} regions composited</p>
-                )}
+          {(() => {
+            const totalWeight = multiRegions2.reduce((sum, mr) => sum + (mr.maskDef.weight ?? 1), 0);
+            const hasWeights = multiRegions2.some(mr => mr.maskDef.weight !== undefined);
+            return (
+              <div className="space-y-3">
+                <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide">
+                  Document 2 — Masks to Verify ({multiRegions2.length})
+                  {hasWeights && <span className="ml-2 text-teal-400/70 normal-case font-normal">weighted</span>}
+                </p>
+                {multiRegions2.map((mr, idx) => {
+                  const w = mr.maskDef.weight ?? 1;
+                  const pct = totalWeight > 0 ? Math.round((w / totalWeight) * 100) : Math.round(100 / multiRegions2.length);
+                  return (
+                    <div key={mr.maskDef.id} className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-slate-300 text-sm font-semibold">{mr.maskDef.label}</p>
+                        <div className="flex items-center gap-2">
+                          {hasWeights && (
+                            <span className="text-xs bg-slate-800 border border-slate-600 text-slate-400 rounded px-1.5 py-0.5 font-mono">
+                              {pct}%
+                            </span>
+                          )}
+                          <span className="text-xs text-teal-400">Page {mr.page}</span>
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-lg p-2 inline-block">
+                        <img src={mr.dataUrl} alt={`Mask ${idx + 1} signature`} className="max-h-24 w-auto" />
+                      </div>
+                      {mr.maskDef.regions.length > 1 && (
+                        <p className="text-slate-500 text-xs">{mr.maskDef.regions.length} regions composited</p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
+            );
+          })()}
 
           <div className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4 space-y-2">
             <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide">Comparison Mode</p>
