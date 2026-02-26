@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Plus, Trash2, ArrowLeft, Save, Loader2, FileSearch, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft, Save, Loader2, FileSearch, CheckCircle2, AlertCircle, Layers } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import FileDropZone from '../components/FileDropZone';
 import MaskEditor from '../components/MaskEditor';
-import type { SavedTemplate, UploadedFile, MaskRect } from '../types';
+import MultiMaskEditor, { createEmptyMask } from '../components/MultiMaskEditor';
+import type { SavedTemplate, UploadedFile, MaskRect, MaskDefinition } from '../types';
 
 function maskSummary(m: MaskRect): string {
   const parts: string[] = [];
@@ -18,7 +19,7 @@ interface CreateState {
   file1: UploadedFile | null;
   file2: UploadedFile | null;
   mask1: MaskRect | null;
-  mask2: MaskRect | null;
+  masks2: MaskDefinition[];
 }
 
 const emptyCreate = (): CreateState => ({
@@ -26,7 +27,7 @@ const emptyCreate = (): CreateState => ({
   file1: null,
   file2: null,
   mask1: null,
-  mask2: null,
+  masks2: [createEmptyMask(1, 0)],
 });
 
 export default function MasksPage() {
@@ -40,7 +41,6 @@ export default function MasksPage() {
   const [form, setForm] = useState<CreateState>(emptyCreate());
 
   const canvas1Ref = useRef<HTMLCanvasElement | null>(null);
-  const canvas2Ref = useRef<HTMLCanvasElement | null>(null);
 
   const fetchMasks = useCallback(async () => {
     setLoadingList(true);
@@ -59,7 +59,6 @@ export default function MasksPage() {
     setSaveError(null);
     setSaveSuccess(false);
     canvas1Ref.current = null;
-    canvas2Ref.current = null;
     setCreating(true);
   };
 
@@ -73,13 +72,21 @@ export default function MasksPage() {
   };
 
   const handleSave = async () => {
-    if (!form.name.trim() || !form.mask1 || !form.mask2) return;
+    const masks2HasContent = form.masks2.some(m => m.autoDetect || m.regions.length > 0);
+    if (!form.name.trim() || !form.mask1 || !masks2HasContent) return;
     setSaving(true);
     setSaveError(null);
+
+    const firstMask2 = form.masks2[0];
+    const legacyMask2: MaskRect = firstMask2.regions[0]
+      ? { x: firstMask2.regions[0].x, y: firstMask2.regions[0].y, width: firstMask2.regions[0].width, height: firstMask2.regions[0].height, page: firstMask2.page, anchorText: firstMask2.anchorText }
+      : { x: 0, y: 0, width: 0, height: 0, page: firstMask2.page };
+
     const { error } = await supabase.from('templates').insert({
       name: form.name.trim(),
       mask1: form.mask1,
-      mask2: form.mask2,
+      mask2: legacyMask2,
+      masks2: form.masks2,
     });
     setSaving(false);
     if (error) {
@@ -102,7 +109,7 @@ export default function MasksPage() {
 
   const canSave = !!form.name.trim() &&
     !!form.mask1 && (form.mask1.autoDetect || form.mask1.width > 5) &&
-    !!form.mask2 && (form.mask2.autoDetect || form.mask2.width > 5);
+    form.masks2.some(m => m.autoDetect || m.regions.length > 0);
 
   if (creating) {
     return (
@@ -178,16 +185,16 @@ export default function MasksPage() {
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
               <p className="text-slate-200 text-sm font-bold">Document 2 — To Verify</p>
-              {form.mask2 && (form.mask2.autoDetect || form.mask2.width > 5) && (
+              {form.masks2.some(m => m.autoDetect || m.regions.length > 0) && (
                 <CheckCircle2 size={14} className="text-emerald-400 ml-auto" />
               )}
             </div>
-            <p className="text-slate-500 text-xs">Upload a sample PDF to draw the signature region for document type 2</p>
+            <p className="text-slate-500 text-xs">Upload a sample PDF to define one or more signature mask regions for document type 2</p>
             {!form.file2 ? (
               <FileDropZone
                 label="Drop sample PDF here"
                 file={null}
-                onFile={f => setForm(prev => ({ ...prev, file2: f, mask2: null }))}
+                onFile={f => setForm(prev => ({ ...prev, file2: f, masks2: [createEmptyMask(f.pageCount ?? 1, 0)] }))}
                 onClear={() => {}}
               />
             ) : (
@@ -197,20 +204,17 @@ export default function MasksPage() {
                   <button
                     onClick={() => {
                       if (form.file2?.previewUrl) URL.revokeObjectURL(form.file2.previewUrl);
-                      canvas2Ref.current = null;
-                      setForm(f => ({ ...f, file2: null, mask2: null }));
+                      setForm(f => ({ ...f, file2: null, masks2: [createEmptyMask(1, 0)] }));
                     }}
                     className="text-slate-500 hover:text-red-400 transition-colors"
                   >
                     ×
                   </button>
                 </div>
-                <MaskEditor
+                <MultiMaskEditor
                   file={form.file2}
-                  mask={form.mask2}
-                  onMaskChange={m => setForm(f => ({ ...f, mask2: m }))}
-                  canvasRef={canvas2Ref}
-                  showAnchorText
+                  masks={form.masks2}
+                  onMasksChange={m => setForm(f => ({ ...f, masks2: m }))}
                 />
               </div>
             )}
@@ -352,7 +356,34 @@ function MaskCard({ mask, deleting, onDelete }: MaskCardProps) {
 
       <div className="space-y-2">
         <RegionRow label="Doc 1" color="teal" maskSummaryText={maskSummary(mask.mask1)} />
-        <RegionRow label="Doc 2" color="amber" maskSummaryText={maskSummary(mask.mask2)} />
+        {mask.masks2 && mask.masks2.length > 0 ? (
+          <div className="space-y-1.5">
+            {mask.masks2.map((m, idx) => {
+              const regionCount = m.regions.length;
+              const parts: string[] = [];
+              if (m.page && m.page > 1) parts.push(`Page ${m.page}`);
+              if (regionCount > 1) parts.push(`${regionCount} regions`);
+              else if (regionCount === 1) parts.push(`${m.regions[0].width}×${m.regions[0].height}px`);
+              if (m.autoDetect) parts.push('Auto-detect');
+              const summary = parts.length > 0 ? parts.join(' · ') : 'No region';
+              return (
+                <div key={m.id} className="flex items-center gap-2.5 bg-slate-800/60 rounded-xl px-3 py-2">
+                  <div className="w-2 h-2 rounded-full shrink-0 bg-amber-400" />
+                  <span className="text-xs font-bold shrink-0 text-amber-400">Doc 2</span>
+                  <span className="text-slate-500 text-xs shrink-0">{m.label}</span>
+                  <span className="text-slate-400 text-xs truncate">{summary}</span>
+                  {mask.masks2 && mask.masks2.length > 1 && idx === 0 && (
+                    <span className="ml-auto flex items-center gap-0.5 text-teal-400/60 text-xs shrink-0">
+                      <Layers size={10} /> {mask.masks2.length}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <RegionRow label="Doc 2" color="amber" maskSummaryText={maskSummary(mask.mask2)} />
+        )}
       </div>
     </div>
   );
