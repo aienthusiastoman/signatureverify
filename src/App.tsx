@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar';
 import StepIndicator from './components/StepIndicator';
 import FileDropZone from './components/FileDropZone';
 import MaskEditor from './components/MaskEditor';
+import MultiMaskEditor, { createEmptyMask } from './components/MultiMaskEditor';
 import SignaturePreview from './components/SignaturePreview';
 import ResultsPanel from './components/ResultsPanel';
 import TemplatePanel from './components/TemplatePanel';
@@ -22,9 +23,15 @@ import MasksPage from './pages/MasksPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { useSignatureProcess } from './hooks/useSignatureProcess';
-import { extractRegion, renderPdfPageToCanvas, findPageByAnchorText, findPageBySignatureBlob } from './lib/imageUtils';
+import {
+  extractRegion, extractCompositeRegion, renderPdfPageToCanvas,
+  findPageByAnchorText, findPageBySignatureBlob
+} from './lib/imageUtils';
 import { detectSignatureInRegionFiltered } from './lib/signatureDetect';
-import type { UploadedFile, MaskRect, SignatureRegion, AppStep, AppView, CompareMode } from './types';
+import type {
+  UploadedFile, MaskRect, MaskDefinition, SignatureRegion,
+  MultiSignatureRegion, AppStep, AppView, CompareMode
+} from './types';
 
 async function renderPageCanvas(file: UploadedFile, page: number): Promise<HTMLCanvasElement> {
   if (file.type === 'pdf') return renderPdfPageToCanvas(file.file, page);
@@ -49,18 +56,17 @@ function CompareToolContent() {
   const [file1, setFile1] = useState<UploadedFile | null>(null);
   const [file2, setFile2] = useState<UploadedFile | null>(null);
   const [mask1, setMask1] = useState<MaskRect | null>(null);
-  const [mask2, setMask2] = useState<MaskRect | null>(null);
+  const [masks2, setMasks2] = useState<MaskDefinition[]>([createEmptyMask(1, 0)]);
   const [region1, setRegion1] = useState<SignatureRegion | null>(null);
-  const [region2, setRegion2] = useState<SignatureRegion | null>(null);
+  const [multiRegions2, setMultiRegions2] = useState<MultiSignatureRegion[]>([]);
   const [activeDoc, setActiveDoc] = useState<1 | 2>(1);
   const [extracting, setExtracting] = useState(false);
   const [anchorWarning, setAnchorWarning] = useState<string | null>(null);
   const [compareMode, setCompareMode] = useState<CompareMode>('lenient');
 
   const canvas1Ref = useRef<HTMLCanvasElement | null>(null);
-  const canvas2Ref = useRef<HTMLCanvasElement | null>(null);
 
-  const { loading, error, job, result, processSignatures } = useSignatureProcess();
+  const { loading, error, job, result, processSignatures, processMultiMaskSignatures } = useSignatureProcess();
 
   const clearFile1 = useCallback(() => {
     if (file1?.previewUrl) URL.revokeObjectURL(file1.previewUrl);
@@ -70,20 +76,30 @@ function CompareToolContent() {
 
   const clearFile2 = useCallback(() => {
     if (file2?.previewUrl) URL.revokeObjectURL(file2.previewUrl);
-    setFile2(null); setMask2(null); setRegion2(null);
-    canvas2Ref.current = null;
+    setFile2(null);
+    setMasks2([createEmptyMask(1, 0)]);
+    setMultiRegions2([]);
   }, [file2]);
 
   const handleLoadTemplate = useCallback((m1: MaskRect, m2: MaskRect) => {
-    setMask1(m1); setMask2(m2); setActiveDoc(1);
+    setMask1(m1);
+    setMasks2([{
+      id: `tpl-${Date.now()}`,
+      label: 'Mask 1',
+      page: m2.page ?? 1,
+      anchorText: m2.anchorText,
+      pageThumbnail: m2.pageThumbnail,
+      pageThumbnailMaskFrac: m2.pageThumbnailMaskFrac,
+      autoDetect: m2.autoDetect ?? false,
+      regions: (m2.width > 0 && m2.height > 0) ? [{ x: m2.x, y: m2.y, width: m2.width, height: m2.height }] : [],
+    }]);
+    setActiveDoc(1);
   }, []);
 
   const handleProceedToMask = () => { if (file1 && file2) setStep('mask'); };
 
-  const resolvePageForMask = async (file: UploadedFile, mask: MaskRect, scanPages = false): Promise<{ mask: MaskRect; warning?: string }> => {
+  const resolvePageForMask1 = async (file: UploadedFile, mask: MaskRect): Promise<{ mask: MaskRect; warning?: string }> => {
     if (file.type !== 'pdf') return { mask };
-
-    if (!scanPages) return { mask };
 
     let frac = mask.pageThumbnailMaskFrac;
     if (!frac && mask.width > 5 && mask.height > 5) {
@@ -102,69 +118,142 @@ function CompareToolContent() {
 
     if (mask.anchorText?.trim()) {
       const textFound = await findPageByAnchorText(file.file, mask.anchorText, mask);
-      if (textFound !== null) {
-        return { mask: { ...mask, page: textFound } };
-      }
+      if (textFound !== null) return { mask: { ...mask, page: textFound } };
       return { mask, warning: `Could not locate "${mask.anchorText}" in ${file.file.name}. Using page ${mask.page ?? 1}.` };
     }
 
     return { mask };
   };
 
+  const resolvePageForMaskDef = async (
+    file: UploadedFile,
+    maskDef: MaskDefinition
+  ): Promise<{ page: number; warning?: string }> => {
+    if (file.type !== 'pdf') return { page: maskDef.page ?? 1 };
+
+    const firstRegion = maskDef.regions[0];
+
+    let frac = maskDef.pageThumbnailMaskFrac;
+    if (!frac && firstRegion && firstRegion.width > 5) {
+      const refPage = maskDef.page ?? 1;
+      const refCanvas = await renderPdfPageToCanvas(file.file, refPage);
+      const rw = refCanvas.width, rh = refCanvas.height;
+      if (rw > 0 && rh > 0) {
+        frac = { x: firstRegion.x / rw, y: firstRegion.y / rh, w: firstRegion.width / rw, h: firstRegion.height / rh };
+      }
+    }
+
+    if (frac) {
+      const foundPage = await findPageBySignatureBlob(file.file, frac);
+      return { page: foundPage };
+    }
+
+    if (maskDef.anchorText?.trim()) {
+      const pseudoMask: MaskRect = firstRegion
+        ? { x: firstRegion.x, y: firstRegion.y, width: firstRegion.width, height: firstRegion.height, page: maskDef.page }
+        : { x: 0, y: 0, width: 0, height: 0, page: maskDef.page };
+      const textFound = await findPageByAnchorText(file.file, maskDef.anchorText, pseudoMask);
+      if (textFound !== null) return { page: textFound };
+      return { page: maskDef.page ?? 1, warning: `Could not locate "${maskDef.anchorText}" in ${file.file.name}. Using page ${maskDef.page ?? 1}.` };
+    }
+
+    return { page: maskDef.page ?? 1 };
+  };
+
   const handleProceedToPreview = async () => {
-    if (!file1 || !file2 || !mask1 || !mask2) return;
+    if (!file1 || !file2 || !mask1) return;
     setExtracting(true);
     setAnchorWarning(null);
-    try {
-      const [r1, r2] = await Promise.all([
-        resolvePageForMask(file1, mask1, false),
-        resolvePageForMask(file2, mask2, true),
-      ]);
 
-      const warn = r1.warning ?? r2.warning ?? null;
-      if (warn) setAnchorWarning(warn);
+    try {
+      const r1 = await resolvePageForMask1(file1, mask1);
+      if (r1.warning) setAnchorWarning(r1.warning);
 
       let resolvedMask1 = r1.mask;
-      let resolvedMask2 = r2.mask;
       setMask1(resolvedMask1);
-      setMask2(resolvedMask2);
 
       const page1 = resolvedMask1.page ?? 1;
-      const page2 = resolvedMask2.page ?? 1;
       const c1 = await renderPageCanvas(file1, page1);
-      const c2 = await renderPageCanvas(file2, page2);
       canvas1Ref.current = c1;
-      canvas2Ref.current = c2;
 
       if (resolvedMask1.autoDetect) {
         const detected = detectSignatureInRegionFiltered(c1, resolvedMask1);
         resolvedMask1 = { ...resolvedMask1, ...detected };
       }
-      if (resolvedMask2.autoDetect) {
-        const detected = detectSignatureInRegionFiltered(c2, resolvedMask2);
-        resolvedMask2 = { ...resolvedMask2, ...detected };
-      }
 
       const crop1 = extractRegion(c1, resolvedMask1);
-      const crop2 = extractRegion(c2, resolvedMask2);
-      setRegion1({ dataUrl: crop1.toDataURL('image/png'), mask: resolvedMask1, naturalWidth: c1.width, naturalHeight: c1.height });
-      setRegion2({ dataUrl: crop2.toDataURL('image/png'), mask: resolvedMask2, naturalWidth: c2.width, naturalHeight: c2.height });
+      setRegion1({
+        dataUrl: crop1.toDataURL('image/png'),
+        mask: resolvedMask1,
+        naturalWidth: c1.width,
+        naturalHeight: c1.height,
+      });
+
+      const resolvedMultiRegions: MultiSignatureRegion[] = [];
+
+      for (const maskDef of masks2) {
+        const { page: resolvedPage, warning } = await resolvePageForMaskDef(file2, maskDef);
+        if (warning && !anchorWarning) setAnchorWarning(warning);
+
+        const c2 = await renderPageCanvas(file2, resolvedPage);
+        let effectiveRegions = maskDef.regions;
+
+        if (maskDef.autoDetect) {
+          const pseudoMask: MaskRect = { x: 0, y: 0, width: c2.width, height: c2.height, page: resolvedPage, autoDetect: true };
+          const detected = detectSignatureInRegionFiltered(c2, pseudoMask);
+          effectiveRegions = [{ x: detected.x, y: detected.y, width: detected.width, height: detected.height }];
+        }
+
+        const crop = extractCompositeRegion(c2, effectiveRegions);
+        resolvedMultiRegions.push({
+          dataUrl: crop.toDataURL('image/png'),
+          maskDef,
+          page: resolvedPage,
+          naturalWidth: c2.width,
+          naturalHeight: c2.height,
+        });
+      }
+
+      setMultiRegions2(resolvedMultiRegions);
       setStep('preview');
-    } catch { /* silent */ }
-    finally { setExtracting(false); }
+    } catch {
+    } finally {
+      setExtracting(false);
+    }
   };
 
   const handleProcess = async () => {
-    if (!file1 || !file2 || !region1 || !region2) return;
+    if (!file1 || !file2 || !region1) return;
     setStep('results');
-    await processSignatures(file1.file, file2.file, region1, region2, 1.0, compareMode);
+    if (multiRegions2.length === 1 && masks2[0].regions.length <= 1 && !masks2[0].autoDetect) {
+      const singleRegion: SignatureRegion = {
+        dataUrl: multiRegions2[0].dataUrl,
+        mask: {
+          x: masks2[0].regions[0]?.x ?? 0,
+          y: masks2[0].regions[0]?.y ?? 0,
+          width: masks2[0].regions[0]?.width ?? 0,
+          height: masks2[0].regions[0]?.height ?? 0,
+          page: multiRegions2[0].page,
+        },
+        naturalWidth: multiRegions2[0].naturalWidth,
+        naturalHeight: multiRegions2[0].naturalHeight,
+      };
+      await processSignatures(file1.file, file2.file, region1, singleRegion, 1.0, compareMode);
+    } else {
+      await processMultiMaskSignatures(file1.file, file2.file, region1, multiRegions2, compareMode);
+    }
   };
 
   const handleReset = () => { clearFile1(); clearFile2(); setStep('upload'); setAnchorWarning(null); };
 
   const canProceedToMask = !!file1 && !!file2;
   const maskReady = (m: MaskRect | null) => !!m && (m.autoDetect === true || m.width > 5);
-  const canProceedToPreview = maskReady(mask1) && maskReady(mask2);
+  const masks2Ready = masks2.some(m => m.autoDetect || m.regions.length > 0);
+  const canProceedToPreview = maskReady(mask1) && masks2Ready;
+
+  const mask1Summary = mask1 && mask1.width > 0
+    ? (masks2.length === 1 && masks2[0].regions.length <= 1)
+    : false;
 
   return (
     <div className="space-y-6">
@@ -203,7 +292,9 @@ function CompareToolContent() {
         <div className="space-y-5">
           <div className="text-center space-y-1">
             <h2 className="text-xl font-black text-white">Define Signature Regions</h2>
-            <p className="text-slate-400 font-light text-sm">Select the page and draw a rectangle around the signature</p>
+            <p className="text-slate-400 font-light text-sm">
+              Select regions on Document 1 and define one or more masks on Document 2
+            </p>
           </div>
 
           <div className="max-w-3xl mx-auto">
@@ -212,8 +303,10 @@ function CompareToolContent() {
 
           <div className="flex justify-center gap-2">
             {([1, 2] as const).map((n) => {
-              const hasMask = n === 1 ? (mask1 && mask1.width > 5) : (mask2 && mask2.width > 5);
-              const maskPage = n === 1 ? mask1?.page : mask2?.page;
+              const hasMask = n === 1
+                ? (mask1 && mask1.width > 5)
+                : masks2.some(m => m.regions.length > 0 || m.autoDetect);
+              const maskPage = n === 1 ? mask1?.page : masks2[0]?.page;
               return (
                 <button
                   key={n}
@@ -226,7 +319,8 @@ function CompareToolContent() {
                   {hasMask && (
                     <span className="flex items-center gap-1">
                       <span className="w-2 h-2 bg-emerald-400 rounded-full" />
-                      {maskPage && <span className="text-xs opacity-70">p{maskPage}</span>}
+                      {n === 1 && maskPage && <span className="text-xs opacity-70">p{maskPage}</span>}
+                      {n === 2 && <span className="text-xs opacity-70">{masks2.length} mask{masks2.length > 1 ? 's' : ''}</span>}
                     </span>
                   )}
                 </button>
@@ -244,7 +338,7 @@ function CompareToolContent() {
             {activeDoc === 2 && file2 && (
               <div className="bg-slate-900/50 border border-slate-700 rounded-2xl p-5">
                 <p className="text-slate-300 text-sm font-semibold mb-3 truncate">{file2.file.name}</p>
-                <MaskEditor file={file2} mask={mask2} onMaskChange={setMask2} canvasRef={canvas2Ref} showAnchorText />
+                <MultiMaskEditor file={file2} masks={masks2} onMasksChange={setMasks2} />
               </div>
             )}
           </div>
@@ -283,12 +377,38 @@ function CompareToolContent() {
             <p className="text-slate-400 font-light text-sm">Confirm the extracted regions look correct before comparison</p>
           </div>
 
-          <SignaturePreview
-            region1={region1}
-            region2={region2}
-            label1={`Document 1${mask1?.page ? ` — Page ${mask1.page}` : ''} — ${file1?.file.name ?? ''}`}
-            label2={`Document 2${mask2?.page ? ` — Page ${mask2.page}` : ''} — ${file2?.file.name ?? ''}`}
-          />
+          {region1 && (
+            <div className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4 space-y-3">
+              <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide">Document 1 — Reference</p>
+              <div className="flex items-center gap-3">
+                <p className="text-slate-300 text-xs truncate flex-1">{file1?.file.name}</p>
+                {mask1?.page && <span className="text-xs text-teal-400">Page {mask1.page}</span>}
+              </div>
+              <div className="bg-white rounded-lg p-2 inline-block">
+                <img src={region1.dataUrl} alt="Reference signature" className="max-h-24 w-auto" />
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide">
+              Document 2 — Masks to Verify ({multiRegions2.length})
+            </p>
+            {multiRegions2.map((mr, idx) => (
+              <div key={mr.maskDef.id} className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-slate-300 text-sm font-semibold">{mr.maskDef.label}</p>
+                  <span className="text-xs text-teal-400">Page {mr.page}</span>
+                </div>
+                <div className="bg-white rounded-lg p-2 inline-block">
+                  <img src={mr.dataUrl} alt={`Mask ${idx + 1} signature`} className="max-h-24 w-auto" />
+                </div>
+                {mr.maskDef.regions.length > 1 && (
+                  <p className="text-slate-500 text-xs">{mr.maskDef.regions.length} regions composited</p>
+                )}
+              </div>
+            ))}
+          </div>
 
           <div className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4 space-y-2">
             <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide">Comparison Mode</p>
@@ -338,7 +458,7 @@ function CompareToolContent() {
             </button>
             <button
               onClick={handleProcess}
-              disabled={!region1 || !region2}
+              disabled={!region1 || multiRegions2.length === 0}
               className="flex-1 flex items-center justify-center gap-2 py-3 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors shadow-lg shadow-teal-500/20"
             >
               Compare Signatures <ArrowRight size={18} />
@@ -385,7 +505,14 @@ function CompareToolContent() {
           {result && !loading && (
             <>
               <ResultsPanel result={result} job={job} />
-              <TemplatePanel onLoad={handleLoadTemplate} mask1={mask1} mask2={mask2} showSave={true} />
+              <TemplatePanel onLoad={handleLoadTemplate} mask1={mask1} mask2={masks2[0] && masks2[0].regions[0] ? {
+                x: masks2[0].regions[0].x,
+                y: masks2[0].regions[0].y,
+                width: masks2[0].regions[0].width,
+                height: masks2[0].regions[0].height,
+                page: masks2[0].page,
+                anchorText: masks2[0].anchorText,
+              } : null} showSave={true} />
               <div className="flex gap-3">
                 <button
                   onClick={() => setStep('mask')}

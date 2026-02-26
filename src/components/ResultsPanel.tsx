@@ -1,12 +1,12 @@
-import { Download, CheckCircle, XCircle, AlertTriangle, BarChart2, Clock, FileText } from 'lucide-react';
-import type { ProcessResponse, VerificationJob } from '../types';
+import { Download, CheckCircle, XCircle, AlertTriangle, BarChart2, Clock, FileText, Layers } from 'lucide-react';
+import type { ProcessResponse, VerificationJob, MaskScoreBreakdown } from '../types';
 
 interface Props {
   result: ProcessResponse;
   job: VerificationJob | null;
 }
 
-function ConfidenceGauge({ score }: { score: number }) {
+function ScoreBadge({ score, size = 'lg' }: { score: number; size?: 'sm' | 'lg' }) {
   const clamp = Math.max(0, Math.min(100, score));
   const color =
     clamp >= 75 ? 'text-emerald-400' :
@@ -16,19 +16,31 @@ function ConfidenceGauge({ score }: { score: number }) {
     clamp >= 75 ? 'bg-emerald-500' :
     clamp >= 50 ? 'bg-amber-500' :
     'bg-red-500';
-  const label =
-    clamp >= 75 ? 'High Confidence Match' :
-    clamp >= 50 ? 'Moderate Match' :
-    'Low Match / Mismatch';
   const Icon =
     clamp >= 75 ? CheckCircle :
     clamp >= 50 ? AlertTriangle :
     XCircle;
+  const label =
+    clamp >= 75 ? 'High Confidence Match' :
+    clamp >= 50 ? 'Moderate Match' :
+    'Low Match / Mismatch';
+
+  if (size === 'sm') {
+    return (
+      <div className="flex items-center gap-2">
+        <Icon size={14} className={color} />
+        <span className={`text-2xl font-black tabular-nums ${color}`}>{clamp.toFixed(1)}%</span>
+        <span className={`text-xs font-medium ${color} opacity-80`}>{label}</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-white font-semibold">Confidence Score</h3>
+        <h3 className="text-white font-semibold">
+          {score !== undefined ? 'Final Confidence Score' : 'Confidence Score'}
+        </h3>
         <div className={`flex items-center gap-1.5 text-sm font-medium ${color}`}>
           <Icon size={16} />
           <span>{label}</span>
@@ -67,14 +79,87 @@ function ConfidenceGauge({ score }: { score: number }) {
   );
 }
 
+function MaskBreakdownPanel({ breakdown }: { breakdown: MaskScoreBreakdown[] }) {
+  return (
+    <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 space-y-3">
+      <h3 className="text-white font-semibold flex items-center gap-2">
+        <Layers size={16} className="text-teal-400" />
+        Mask-by-Mask Breakdown
+        <span className="ml-auto text-xs text-slate-500 font-normal">{breakdown.length} masks</span>
+      </h3>
+
+      <div className="space-y-2">
+        {breakdown.map((item) => {
+          const clamp = Math.max(0, Math.min(100, item.score));
+          const barColor =
+            clamp >= 75 ? 'bg-emerald-500' :
+            clamp >= 50 ? 'bg-amber-500' :
+            'bg-red-500';
+          const textColor =
+            clamp >= 75 ? 'text-emerald-400' :
+            clamp >= 50 ? 'text-amber-400' :
+            'text-red-400';
+          const Icon =
+            clamp >= 75 ? CheckCircle :
+            clamp >= 50 ? AlertTriangle :
+            XCircle;
+
+          return (
+            <div key={item.maskIndex} className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="shrink-0 w-5 h-5 rounded bg-slate-700 text-slate-300 text-xs font-bold flex items-center justify-center">
+                    {item.maskIndex + 1}
+                  </span>
+                  <span className="text-slate-300 text-sm font-medium truncate">{item.maskLabel}</span>
+                  <span className="shrink-0 text-xs text-teal-400">p{item.page}</span>
+                </div>
+                <div className={`flex items-center gap-1.5 shrink-0 ${textColor}`}>
+                  <Icon size={13} />
+                  <span className="font-black tabular-nums text-base">{clamp.toFixed(1)}%</span>
+                </div>
+              </div>
+
+              <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-700 ${barColor}`}
+                  style={{ width: `${clamp}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="border-t border-slate-700 pt-2 flex items-center justify-between text-xs">
+        <span className="text-slate-500">Average score</span>
+        <span className="text-slate-300 font-mono">
+          ({breakdown.map(b => b.score.toFixed(1)).join(' + ')}) ÷ {breakdown.length}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function ResultsPanel({ result, job }: Props) {
   const handleDownload = () => {
     window.open(result.resultUrl, '_blank');
   };
 
+  const hasBreakdown = result.maskBreakdown && result.maskBreakdown.length > 1;
+
   return (
     <div className="space-y-4">
-      <ConfidenceGauge score={result.confidenceScore} />
+      <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6">
+        <ScoreBadge score={result.confidenceScore} size="lg" />
+        {hasBreakdown && (
+          <p className="text-slate-500 text-xs mt-3">
+            Averaged from {result.maskBreakdown!.length} mask scores — see breakdown below
+          </p>
+        )}
+      </div>
+
+      {hasBreakdown && <MaskBreakdownPanel breakdown={result.maskBreakdown!} />}
 
       {job && (
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 space-y-3">
@@ -122,7 +207,9 @@ export default function ResultsPanel({ result, job }: Props) {
       </button>
 
       <p className="text-center text-slate-500 text-xs">
-        PDF contains side-by-side signature comparison with full analysis metrics
+        {hasBreakdown
+          ? `PDF includes per-mask breakdown with all ${result.maskBreakdown!.length} signature comparisons`
+          : 'PDF contains side-by-side signature comparison with full analysis metrics'}
       </p>
     </div>
   );

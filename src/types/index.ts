@@ -10,6 +10,24 @@ export interface MaskRect {
   autoDetect?: boolean;
 }
 
+export interface MaskRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface MaskDefinition {
+  id: string;
+  label: string;
+  page?: number;
+  anchorText?: string;
+  pageThumbnail?: string;
+  pageThumbnailMaskFrac?: { x: number; y: number; w: number; h: number };
+  autoDetect?: boolean;
+  regions: MaskRegion[];
+}
+
 export interface UploadedFile {
   file: File;
   previewUrl: string;
@@ -20,6 +38,14 @@ export interface UploadedFile {
 export interface SignatureRegion {
   dataUrl: string;
   mask: MaskRect;
+  naturalWidth: number;
+  naturalHeight: number;
+}
+
+export interface MultiSignatureRegion {
+  dataUrl: string;
+  maskDef: MaskDefinition;
+  page: number;
   naturalWidth: number;
   naturalHeight: number;
 }
@@ -50,6 +76,14 @@ export interface SavedTemplate {
 
 export type AppStep = 'upload' | 'mask' | 'preview' | 'results';
 
+export interface MaskScoreBreakdown {
+  maskIndex: number;
+  maskLabel: string;
+  page: number;
+  score: number;
+  sigDataUrl?: string;
+}
+
 export interface ProcessResponse {
   jobId: string;
   confidenceScore: number;
@@ -58,6 +92,7 @@ export interface ProcessResponse {
   matchedPage1?: number;
   matchedPage2?: number;
   mode?: 'lenient' | 'strict' | 'super_lenient';
+  maskBreakdown?: MaskScoreBreakdown[];
 }
 
 export type CompareMode = 'lenient' | 'strict' | 'super_lenient';

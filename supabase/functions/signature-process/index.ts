@@ -612,6 +612,14 @@ async function cropImageToMask(
   return outBuf.buffer as ArrayBuffer;
 }
 
+interface MaskBreakdownItem {
+  maskIndex: number;
+  maskLabel: string;
+  page: number;
+  score: number;
+  sigBytes: Uint8Array;
+}
+
 async function generatePDF(
   sig1Bytes: Uint8Array,
   sig2Bytes: Uint8Array,
@@ -622,11 +630,10 @@ async function generatePDF(
   timestamp: string,
   matchedPage1?: number,
   matchedPage2?: number,
-  mode: 'lenient' | 'strict' | 'super_lenient' = 'lenient'
+  mode: 'lenient' | 'strict' | 'super_lenient' = 'lenient',
+  maskBreakdown?: MaskBreakdownItem[]
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  const page = doc.addPage(PageSizes.A4);
-  const { width, height } = page.getSize();
   const font = await doc.embedFont(StandardFonts.HelveticaBold);
   const fontReg = await doc.embedFont(StandardFonts.Helvetica);
 
@@ -642,6 +649,9 @@ async function generatePDF(
   const muted = rgb(0.55, 0.63, 0.72);
   const teal = rgb(0.0, 0.38, 0.50);
 
+  const page = doc.addPage(PageSizes.A4);
+  const { width, height } = page.getSize();
+
   page.drawRectangle({ x: 0, y: 0, width, height, color: darkBg });
 
   page.drawRectangle({ x: 0, y: height - 80, width, height: 80, color: teal });
@@ -652,11 +662,15 @@ async function generatePDF(
 
   const scoreSectionY = height - 180;
   page.drawRectangle({ x: 30, y: scoreSectionY - 10, width: width - 60, height: 80, color: cardBg, borderColor, borderWidth: 1 });
-  page.drawText("CONFIDENCE SCORE", { x: 50, y: scoreSectionY + 48, size: 9, font, color: muted });
+  page.drawText("FINAL CONFIDENCE SCORE", { x: 50, y: scoreSectionY + 48, size: 9, font, color: muted });
 
   const scoreLabel = score >= 75 ? "HIGH CONFIDENCE MATCH" : score >= 50 ? "MODERATE MATCH" : "LOW MATCH / MISMATCH";
   page.drawText(`${score.toFixed(1)}%`, { x: 50, y: scoreSectionY + 18, size: 36, font, color: scoreColor });
   page.drawText(scoreLabel, { x: 180, y: scoreSectionY + 28, size: 11, font, color: scoreColor });
+
+  if (maskBreakdown && maskBreakdown.length > 1) {
+    page.drawText(`Average of ${maskBreakdown.length} mask scores`, { x: 180, y: scoreSectionY + 12, size: 8, font: fontReg, color: muted });
+  }
 
   const barX = 180, barY = scoreSectionY + 10, barW = width - 230, barH = 10;
   page.drawRectangle({ x: barX, y: barY, width: barW, height: barH, color: borderColor });
@@ -689,21 +703,17 @@ async function generatePDF(
   try {
     const img1 = await doc.embedPng(sig1Bytes);
     const img2 = await doc.embedPng(sig2Bytes);
-
     const dims1 = img1.scaleToFit(imgMaxW, imgMaxH);
     const dims2 = img2.scaleToFit(imgMaxW, imgMaxH);
-
     const img1X = 30 + (colW - dims1.width) / 2;
     const img1Y = docSectionY - 185;
     page.drawRectangle({ x: img1X - 4, y: img1Y - 4, width: dims1.width + 8, height: dims1.height + 8, color: white });
     page.drawImage(img1, { x: img1X, y: img1Y, width: dims1.width, height: dims1.height });
-
     const img2X = 30 + colW + 30 + (colW - dims2.width) / 2;
     const img2Y = docSectionY - 185;
     page.drawRectangle({ x: img2X - 4, y: img2Y - 4, width: dims2.width + 8, height: dims2.height + 8, color: white });
     page.drawImage(img2, { x: img2X, y: img2Y, width: dims2.width, height: dims2.height });
-  } catch (_) {
-  }
+  } catch (_) {}
 
   const analysisY = docSectionY - 270;
   page.drawRectangle({ x: 30, y: analysisY - 90, width: width - 60, height: 80, color: cardBg, borderColor, borderWidth: 1 });
@@ -729,10 +739,107 @@ async function generatePDF(
     x: width / 2 - 165, y: 20, size: 8, font: fontReg, color: rgb(0.4, 0.5, 0.6)
   });
 
+  if (maskBreakdown && maskBreakdown.length > 1) {
+    const breakdownPage = doc.addPage(PageSizes.A4);
+    const bpWidth = breakdownPage.getSize().width;
+    const bpHeight = breakdownPage.getSize().height;
+
+    breakdownPage.drawRectangle({ x: 0, y: 0, width: bpWidth, height: bpHeight, color: darkBg });
+    breakdownPage.drawRectangle({ x: 0, y: bpHeight - 60, width: bpWidth, height: 60, color: teal });
+    breakdownPage.drawText("Mask-by-Mask Breakdown", { x: 40, y: bpHeight - 28, size: 18, font, color: white });
+    breakdownPage.drawText(`${file2Name}  —  ${maskBreakdown.length} masks analyzed`, { x: 40, y: bpHeight - 48, size: 9, font: fontReg, color: rgb(0.8, 0.95, 1.0) });
+
+    let rowY = bpHeight - 80;
+    const rowH = 110;
+    const imgColW = 160;
+    const textColX = 40 + imgColW + 20;
+
+    for (const item of maskBreakdown) {
+      if (rowY - rowH < 40) {
+        const extraPage = doc.addPage(PageSizes.A4);
+        const epWidth = extraPage.getSize().width;
+        const epHeight = extraPage.getSize().height;
+        extraPage.drawRectangle({ x: 0, y: 0, width: epWidth, height: epHeight, color: darkBg });
+        rowY = epHeight - 20;
+      }
+
+      const currentPage = doc.getPage(doc.getPageCount() - 1);
+      const itemScoreColor =
+        item.score >= 75 ? rgb(0.13, 0.77, 0.37) :
+        item.score >= 50 ? rgb(0.96, 0.62, 0.04) :
+        rgb(0.93, 0.27, 0.27);
+
+      currentPage.drawRectangle({
+        x: 30, y: rowY - rowH + 8, width: bpWidth - 60, height: rowH - 8,
+        color: cardBg, borderColor, borderWidth: 1
+      });
+
+      currentPage.drawRectangle({
+        x: 30, y: rowY - 20, width: bpWidth - 60, height: 20,
+        color: rgb(0.10, 0.14, 0.20)
+      });
+
+      const maskLabelText = item.maskLabel.length > 40 ? item.maskLabel.slice(0, 37) + '...' : item.maskLabel;
+      currentPage.drawText(`Mask ${item.maskIndex + 1}: ${maskLabelText}`, {
+        x: 44, y: rowY - 14, size: 9, font, color: white
+      });
+      currentPage.drawText(`Page ${item.page}`, {
+        x: bpWidth - 90, y: rowY - 14, size: 8, font: fontReg, color: rgb(0.0, 0.75, 0.65)
+      });
+
+      try {
+        const sigImg = await doc.embedPng(item.sigBytes);
+        const dims = sigImg.scaleToFit(imgColW - 8, rowH - 36);
+        const imgX = 38 + (imgColW - dims.width) / 2;
+        const imgY = rowY - rowH + 14;
+        currentPage.drawRectangle({ x: imgX - 2, y: imgY - 2, width: dims.width + 4, height: dims.height + 4, color: white });
+        currentPage.drawImage(sigImg, { x: imgX, y: imgY, width: dims.width, height: dims.height });
+      } catch (_) {}
+
+      currentPage.drawText(`${item.score.toFixed(1)}%`, {
+        x: textColX, y: rowY - 48, size: 28, font, color: itemScoreColor
+      });
+
+      const itemLabel = item.score >= 75 ? "High Confidence Match" : item.score >= 50 ? "Moderate Match" : "Low Match / Mismatch";
+      currentPage.drawText(itemLabel, { x: textColX, y: rowY - 68, size: 9, font, color: itemScoreColor });
+
+      const barW2 = bpWidth - textColX - 50;
+      currentPage.drawRectangle({ x: textColX, y: rowY - 82, width: barW2, height: 7, color: borderColor });
+      currentPage.drawRectangle({ x: textColX, y: rowY - 82, width: Math.max(2, barW2 * (item.score / 100)), height: 7, color: itemScoreColor });
+
+      rowY -= rowH + 8;
+    }
+
+    const lastPage = doc.getPage(doc.getPageCount() - 1);
+    const lastHeight = lastPage.getSize().height;
+    const summaryY = Math.max(60, rowY - 20);
+    lastPage.drawRectangle({ x: 30, y: summaryY - 50, width: bpWidth - 60, height: 50, color: cardBg, borderColor, borderWidth: 1 });
+    lastPage.drawText("FINAL AVERAGED SCORE", { x: 50, y: summaryY - 14, size: 9, font, color: muted });
+    lastPage.drawText(`${score.toFixed(1)}%`, { x: 50, y: summaryY - 38, size: 22, font, color: scoreColor });
+    lastPage.drawText(`= Average of ${maskBreakdown.map(m => m.score.toFixed(1) + '%').join(' + ')}`, {
+      x: 150, y: summaryY - 30, size: 8, font: fontReg, color: muted
+    });
+  }
+
   return doc.save();
 }
 
-async function resolveImageBuffers(formData: FormData): Promise<{ buf1: ArrayBuffer; buf2: ArrayBuffer; file1Name: string; file2Name: string; file1Path: string; file2Path: string; mask1Raw: string | null; mask2Raw: string | null; scaleFile2: number; matchedPage1: number | undefined; matchedPage2: number | undefined; mode: 'lenient' | 'strict' | 'super_lenient' }> {
+async function resolveImageBuffers(formData: FormData): Promise<{
+  buf1: ArrayBuffer;
+  buf2: ArrayBuffer;
+  file1Name: string;
+  file2Name: string;
+  file1Path: string;
+  file2Path: string;
+  mask1Raw: string | null;
+  mask2Raw: string | null;
+  scaleFile2: number;
+  matchedPage1: number | undefined;
+  matchedPage2: number | undefined;
+  mode: 'lenient' | 'strict' | 'super_lenient';
+  isMultiMask: boolean;
+  multiMaskBufs: { buf: ArrayBuffer; label: string; page: number }[];
+}> {
   const file1Name = (formData.get("file1_name") as string) || "document1";
   const file2Name = (formData.get("file2_name") as string) || "document2";
   const file1Path = (formData.get("file1_path") as string) || "";
@@ -746,30 +853,66 @@ async function resolveImageBuffers(formData: FormData): Promise<{ buf1: ArrayBuf
   const matchedPage2 = mp2 ? parseInt(mp2) : undefined;
   const modeRaw = (formData.get("mode") as string) || "lenient";
   const mode: 'lenient' | 'strict' | 'super_lenient' = modeRaw === 'strict' ? 'strict' : modeRaw === 'super_lenient' ? 'super_lenient' : 'lenient';
+  const isMultiMask = (formData.get("multi_mask_mode") as string) === 'true';
 
   const sig1File = formData.get("signature1") as File | null;
   const sig2File = formData.get("signature2") as File | null;
 
-  const b64f1 = formData.get("file1_base64") as string | null;
-  const b64f2 = formData.get("file2_base64") as string | null;
-
   let buf1: ArrayBuffer;
-  let buf2: ArrayBuffer;
+  let buf2: ArrayBuffer = new ArrayBuffer(0);
 
-  if (sig1File && sig2File) {
+  if (sig1File) {
     buf1 = await sig1File.arrayBuffer();
-    buf2 = await sig2File.arrayBuffer();
-  } else if (b64f1 && b64f2) {
-    buf1 = Buffer.from(b64f1, "base64").buffer;
-    buf2 = Buffer.from(b64f2, "base64").buffer;
   } else {
-    throw new Error("Either signature files or base64-encoded files are required");
+    const b64f1 = formData.get("file1_base64") as string | null;
+    if (!b64f1) throw new Error("signature1 or file1_base64 is required");
+    buf1 = Buffer.from(b64f1, "base64").buffer;
   }
 
-  return { buf1, buf2, file1Name, file2Name, file1Path, file2Path, mask1Raw, mask2Raw, scaleFile2, matchedPage1, matchedPage2, mode };
+  if (sig2File) {
+    buf2 = await sig2File.arrayBuffer();
+  } else {
+    const b64f2 = formData.get("file2_base64") as string | null;
+    if (b64f2) buf2 = Buffer.from(b64f2, "base64").buffer;
+  }
+
+  const multiMaskBufs: { buf: ArrayBuffer; label: string; page: number }[] = [];
+  if (isMultiMask) {
+    const count = parseInt((formData.get("mask2_count") as string) || "0");
+    for (let i = 0; i < count; i++) {
+      const f = formData.get(`signature2_${i}`) as File | null;
+      if (!f) continue;
+      const abuf = await f.arrayBuffer();
+      const label = (formData.get(`mask2_${i}_label`) as string) || `Mask ${i + 1}`;
+      const page = parseInt((formData.get(`mask2_${i}_page`) as string) || "1");
+      multiMaskBufs.push({ buf: abuf, label, page });
+    }
+  }
+
+  return {
+    buf1, buf2, file1Name, file2Name, file1Path, file2Path,
+    mask1Raw, mask2Raw, scaleFile2, matchedPage1, matchedPage2, mode,
+    isMultiMask, multiMaskBufs
+  };
 }
 
-async function resolveFromJson(body: Record<string, unknown>): Promise<{ buf1: ArrayBuffer; buf2: ArrayBuffer; file1Name: string; file2Name: string; file1Path: string; file2Path: string; mask1Raw: string | null; mask2Raw: string | null; scaleFile2: number; templateId: string | null; matchedPage1: number | undefined; matchedPage2: number | undefined; mode: 'lenient' | 'strict' | 'super_lenient' }> {
+async function resolveFromJson(body: Record<string, unknown>): Promise<{
+  buf1: ArrayBuffer;
+  buf2: ArrayBuffer;
+  file1Name: string;
+  file2Name: string;
+  file1Path: string;
+  file2Path: string;
+  mask1Raw: string | null;
+  mask2Raw: string | null;
+  scaleFile2: number;
+  templateId: string | null;
+  matchedPage1: number | undefined;
+  matchedPage2: number | undefined;
+  mode: 'lenient' | 'strict' | 'super_lenient';
+  isMultiMask: false;
+  multiMaskBufs: [];
+}> {
   const file1Name = (body.file1_name as string) || "document1";
   const file2Name = (body.file2_name as string) || "document2";
   const file1Path = (body.file1_path as string) || "";
@@ -790,7 +933,11 @@ async function resolveFromJson(body: Record<string, unknown>): Promise<{ buf1: A
   const buf1 = Buffer.from(b64f1, "base64").buffer;
   const buf2 = Buffer.from(b64f2, "base64").buffer;
 
-  return { buf1, buf2, file1Name, file2Name, file1Path, file2Path, mask1Raw, mask2Raw, scaleFile2, templateId, matchedPage1, matchedPage2, mode };
+  return {
+    buf1, buf2, file1Name, file2Name, file1Path, file2Path,
+    mask1Raw, mask2Raw, scaleFile2, templateId, matchedPage1, matchedPage2, mode,
+    isMultiMask: false, multiMaskBufs: []
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -813,6 +960,8 @@ Deno.serve(async (req: Request) => {
     let matchedPage1: number | undefined;
     let matchedPage2: number | undefined;
     let mode: 'lenient' | 'strict' | 'super_lenient' = 'lenient';
+    let isMultiMask = false;
+    let multiMaskBufs: { buf: ArrayBuffer; label: string; page: number }[] = [];
 
     if (contentType.includes("application/json")) {
       const body = await req.json() as Record<string, unknown>;
@@ -825,6 +974,8 @@ Deno.serve(async (req: Request) => {
       matchedPage1 = resolved.matchedPage1;
       matchedPage2 = resolved.matchedPage2;
       mode = resolved.mode;
+      isMultiMask = false;
+      multiMaskBufs = [];
 
       if (resolved.templateId) {
         const { data: tpl } = await supabase.from("templates").select("mask1, mask2").eq("id", resolved.templateId).maybeSingle();
@@ -851,6 +1002,8 @@ Deno.serve(async (req: Request) => {
       matchedPage1 = resolved.matchedPage1;
       matchedPage2 = resolved.matchedPage2;
       mode = resolved.mode;
+      isMultiMask = resolved.isMultiMask;
+      multiMaskBufs = resolved.multiMaskBufs;
     }
 
     const { data: job, error: jobErr } = await supabase
@@ -873,7 +1026,42 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const confidenceScore = await compareSignatures(buf1, buf2, mode);
+    let confidenceScore: number;
+    let maskBreakdownItems: MaskBreakdownItem[] | undefined;
+    let maskBreakdownForResponse: { maskIndex: number; maskLabel: string; page: number; score: number }[] | undefined;
+    let primarySig2Bytes: Uint8Array;
+
+    if (isMultiMask && multiMaskBufs.length > 0) {
+      const scores: number[] = [];
+      maskBreakdownItems = [];
+      maskBreakdownForResponse = [];
+
+      for (let i = 0; i < multiMaskBufs.length; i++) {
+        const item = multiMaskBufs[i];
+        const s = await compareSignatures(buf1, item.buf, mode);
+        scores.push(s);
+        maskBreakdownItems.push({
+          maskIndex: i,
+          maskLabel: item.label,
+          page: item.page,
+          score: Math.round(s * 10) / 10,
+          sigBytes: new Uint8Array(item.buf),
+        });
+        maskBreakdownForResponse.push({
+          maskIndex: i,
+          maskLabel: item.label,
+          page: item.page,
+          score: Math.round(s * 10) / 10,
+        });
+      }
+
+      confidenceScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+      primarySig2Bytes = new Uint8Array(multiMaskBufs[0].buf);
+      matchedPage2 = multiMaskBufs[0].page;
+    } else {
+      confidenceScore = await compareSignatures(buf1, buf2, mode);
+      primarySig2Bytes = new Uint8Array(buf2);
+    }
 
     const timestamp = new Date().toLocaleString("en-US", {
       year: "numeric", month: "short", day: "numeric",
@@ -882,7 +1070,7 @@ Deno.serve(async (req: Request) => {
 
     const pdfBytes = await generatePDF(
       new Uint8Array(buf1),
-      new Uint8Array(buf2),
+      primarySig2Bytes,
       confidenceScore,
       file1Name,
       file2Name,
@@ -890,7 +1078,8 @@ Deno.serve(async (req: Request) => {
       timestamp,
       matchedPage1,
       matchedPage2,
-      mode
+      mode,
+      maskBreakdownItems
     );
 
     const resultPath = `results/${job.id}.pdf`;
@@ -929,6 +1118,7 @@ Deno.serve(async (req: Request) => {
     };
     if (matchedPage1 !== undefined) responseBody.matchedPage1 = matchedPage1;
     if (matchedPage2 !== undefined) responseBody.matchedPage2 = matchedPage2;
+    if (maskBreakdownForResponse) responseBody.maskBreakdown = maskBreakdownForResponse;
 
     return new Response(
       JSON.stringify(responseBody),

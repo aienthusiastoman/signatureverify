@@ -498,6 +498,39 @@ export function extractRegion(canvas: HTMLCanvasElement, mask: MaskRect): HTMLCa
   return output;
 }
 
+export function extractCompositeRegion(
+  canvas: HTMLCanvasElement,
+  regions: { x: number; y: number; width: number; height: number }[]
+): HTMLCanvasElement {
+  if (regions.length === 0) {
+    const empty = document.createElement('canvas');
+    empty.width = 1; empty.height = 1;
+    return empty;
+  }
+  if (regions.length === 1) {
+    const r = regions[0];
+    const out = document.createElement('canvas');
+    out.width = Math.max(1, r.width);
+    out.height = Math.max(1, r.height);
+    out.getContext('2d')!.drawImage(canvas, r.x, r.y, r.width, r.height, 0, 0, r.width, r.height);
+    return out;
+  }
+  const totalW = regions.reduce((s, r) => s + r.width, 0) + (regions.length - 1) * 4;
+  const totalH = Math.max(...regions.map(r => r.height));
+  const out = document.createElement('canvas');
+  out.width = Math.max(1, totalW);
+  out.height = Math.max(1, totalH);
+  const ctx = out.getContext('2d')!;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, totalW, totalH);
+  let xOffset = 0;
+  for (const r of regions) {
+    ctx.drawImage(canvas, r.x, r.y, r.width, r.height, xOffset, 0, r.width, r.height);
+    xOffset += r.width + 4;
+  }
+  return out;
+}
+
 export function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
