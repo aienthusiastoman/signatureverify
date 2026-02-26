@@ -132,17 +132,17 @@ export default function CustomerManagementPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-teal-500/15 border border-teal-500/30 rounded-xl flex items-center justify-center">
-            <Users size={18} className="text-teal-400" />
+          <div className="w-10 h-10 bg-theme/15 border border-theme/30 rounded-xl flex items-center justify-center">
+            <Users size={18} className="text-theme" />
           </div>
           <div>
-            <h1 className="text-white text-xl font-black">Customers</h1>
-            <p className="text-slate-400 text-sm font-light">Manage user accounts and access</p>
+            <h1 className="text-font text-xl font-black">Customers</h1>
+            <p className="text-font/50 text-sm font-light">Manage user accounts and access</p>
           </div>
         </div>
         <button
           onClick={() => setShowCreate(p => !p)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-teal-500 hover:bg-teal-400 text-white text-sm font-semibold rounded-xl transition-colors shadow-lg shadow-teal-500/20"
+          className="flex items-center gap-2 px-4 py-2.5 bg-theme hover:opacity-90 text-white text-sm font-semibold rounded-xl transition-opacity shadow-lg"
         >
           <Plus size={15} /> New User
         </button>
@@ -160,37 +160,37 @@ export default function CustomerManagementPage() {
       )}
 
       {showCreate && (
-        <div className="bg-slate-900 border border-teal-500/30 rounded-2xl p-5 space-y-4">
+        <div className="bg-surface border border-theme/30 rounded-2xl p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-white font-bold text-sm">Create New User</h2>
-            <button onClick={() => setShowCreate(false)} className="text-slate-500 hover:text-white transition-colors">
+            <h2 className="text-font font-bold text-sm">Create New User</h2>
+            <button onClick={() => setShowCreate(false)} className="text-font/40 hover:text-font transition-colors">
               <X size={16} />
             </button>
           </div>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-slate-400 text-xs font-semibold">Email</label>
+              <label className="text-font/50 text-xs font-semibold">Email</label>
               <input
                 type="email"
                 value={newEmail}
                 onChange={e => setNewEmail(e.target.value)}
                 placeholder="user@example.com"
-                className="w-full bg-slate-800 border border-slate-700 focus:border-teal-500 text-white text-sm rounded-xl px-4 py-3 outline-none transition-colors placeholder:text-slate-600"
+                className="w-full bg-black/20 border border-white/10 focus:border-theme/60 text-font text-sm rounded-xl px-4 py-3 outline-none transition-colors placeholder:text-font/25"
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-slate-400 text-xs font-semibold">Password</label>
+              <label className="text-font/50 text-xs font-semibold">Password</label>
               <input
                 type="password"
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
                 placeholder="Min 6 characters"
-                className="w-full bg-slate-800 border border-slate-700 focus:border-teal-500 text-white text-sm rounded-xl px-4 py-3 outline-none transition-colors placeholder:text-slate-600"
+                className="w-full bg-black/20 border border-white/10 focus:border-theme/60 text-font text-sm rounded-xl px-4 py-3 outline-none transition-colors placeholder:text-font/25"
               />
             </div>
           </div>
           <div className="space-y-1.5">
-            <label className="text-slate-400 text-xs font-semibold">Role</label>
+            <label className="text-font/50 text-xs font-semibold">Role</label>
             <div className="flex gap-3">
               {(['user', 'admin'] as const).map(r => (
                 <button
@@ -198,8 +198,8 @@ export default function CustomerManagementPage() {
                   onClick={() => setNewRole(r)}
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all ${
                     newRole === r
-                      ? 'bg-teal-500/15 border-teal-500/40 text-teal-400'
-                      : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'
+                      ? 'bg-theme/15 border-theme/40 text-theme'
+                      : 'bg-black/10 border-white/10 text-font/50 hover:border-white/20'
                   }`}
                 >
                   {r === 'admin' ? <ShieldCheck size={14} /> : <User size={14} />}
@@ -211,30 +211,30 @@ export default function CustomerManagementPage() {
           <button
             onClick={createUser}
             disabled={creating || !newEmail.trim() || !newPassword.trim()}
-            className="flex items-center gap-2 px-5 py-2.5 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 text-white text-sm font-bold rounded-xl transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 bg-theme hover:opacity-90 disabled:opacity-40 text-white text-sm font-bold rounded-xl transition-opacity"
           >
             {creating ? <><Loader2 size={14} className="animate-spin" /> Creating...</> : <><Plus size={14} /> Create User</>}
           </button>
         </div>
       )}
 
-      <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-700/40 flex items-center justify-between">
-          <h2 className="text-white font-bold text-sm">All Users</h2>
-          <span className="text-slate-500 text-xs">{users.length} total</span>
+      <div className="bg-surface border border-white/8 rounded-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-white/8 flex items-center justify-between">
+          <h2 className="text-font font-bold text-sm">All Users</h2>
+          <span className="text-font/35 text-xs">{users.length} total</span>
         </div>
 
         {loading && (
           <div className="py-16 flex flex-col items-center gap-3">
-            <Loader2 size={24} className="animate-spin text-teal-500" />
-            <p className="text-slate-500 text-sm">Loading users...</p>
+            <Loader2 size={24} className="animate-spin text-theme" />
+            <p className="text-font/40 text-sm">Loading users...</p>
           </div>
         )}
 
         {!loading && users.length === 0 && (
           <div className="py-16 text-center">
-            <Users size={32} className="text-slate-700 mx-auto mb-3" />
-            <p className="text-slate-400 font-medium">No users found</p>
+            <Users size={32} className="text-font/15 mx-auto mb-3" />
+            <p className="text-font/50 font-medium">No users found</p>
           </div>
         )}
 
@@ -246,11 +246,11 @@ export default function CustomerManagementPage() {
           return (
             <div
               key={u.id}
-              className="flex items-center gap-4 px-5 py-4 border-b border-slate-700/30 last:border-0 hover:bg-white/2 transition-colors"
+              className="flex items-center gap-4 px-5 py-4 border-b border-white/6 last:border-0 hover:bg-white/[0.02] transition-colors"
             >
               <div
                 className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black shrink-0 ${
-                  active ? 'bg-teal-500/15 text-teal-400' : 'bg-slate-700/50 text-slate-500'
+                  active ? 'bg-theme/15 text-theme' : 'bg-white/8 text-font/35'
                 }`}
               >
                 {(u.email?.[0] ?? '?').toUpperCase()}
@@ -258,16 +258,16 @@ export default function CustomerManagementPage() {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-white text-sm font-semibold truncate">{u.email}</p>
+                  <p className="text-font text-sm font-semibold truncate">{u.email}</p>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                     role === 'admin'
                       ? 'bg-amber-500/15 text-amber-400'
-                      : 'bg-slate-700/60 text-slate-400'
+                      : 'bg-white/8 text-font/40'
                   }`}>
                     {role}
                   </span>
                 </div>
-                <p className="text-slate-600 text-xs mt-0.5">
+                <p className="text-font/30 text-xs mt-0.5">
                   Created {new Date(u.created_at).toLocaleDateString()}
                   {u.last_sign_in_at && ` · Last login ${new Date(u.last_sign_in_at).toLocaleDateString()}`}
                 </p>
@@ -277,7 +277,7 @@ export default function CustomerManagementPage() {
                 <span className={`hidden sm:block text-xs px-2.5 py-1 rounded-full font-semibold ${
                   active
                     ? 'bg-emerald-500/15 text-emerald-400'
-                    : 'bg-slate-700/50 text-slate-500'
+                    : 'bg-white/8 text-font/35'
                 }`}>
                   {active ? 'Active' : 'Inactive'}
                 </span>
@@ -293,7 +293,7 @@ export default function CustomerManagementPage() {
                     </button>
                     <button
                       onClick={() => setDeleteConfirm(null)}
-                      className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs rounded-lg transition-colors"
+                      className="px-3 py-1.5 bg-white/10 hover:bg-white/15 text-font/60 text-xs rounded-lg transition-colors"
                     >
                       Cancel
                     </button>
@@ -306,8 +306,8 @@ export default function CustomerManagementPage() {
                       title={active ? 'Deactivate' : 'Activate'}
                       className={`p-2 rounded-lg transition-colors ${
                         active
-                          ? 'hover:bg-amber-500/15 text-slate-500 hover:text-amber-400'
-                          : 'hover:bg-emerald-500/15 text-slate-500 hover:text-emerald-400'
+                          ? 'hover:bg-amber-500/15 text-font/30 hover:text-amber-400'
+                          : 'hover:bg-emerald-500/15 text-font/30 hover:text-emerald-400'
                       }`}
                     >
                       {actionId === u.id
@@ -317,7 +317,7 @@ export default function CustomerManagementPage() {
                     <button
                       onClick={() => setDeleteConfirm(u.id)}
                       title="Delete user"
-                      className="p-2 rounded-lg hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-colors"
+                      className="p-2 rounded-lg hover:bg-red-500/15 text-font/30 hover:text-red-400 transition-colors"
                     >
                       <Trash2 size={15} />
                     </button>

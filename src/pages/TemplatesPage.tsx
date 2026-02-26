@@ -26,9 +26,9 @@ function RegionDiagram({ mask, label, color }: { mask: MaskRect; label: string; 
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide">{label}</p>
+      <p className="text-font/50 text-xs font-semibold uppercase tracking-wide">{label}</p>
       <div
-        className="relative rounded-lg overflow-hidden border border-slate-600 shrink-0"
+        className="relative rounded-lg overflow-hidden border border-white/12 shrink-0"
         style={{ width: DOC_W, height: DOC_H, background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}
       >
         {Array.from({ length: 18 }, (_, i) => (
@@ -58,13 +58,13 @@ function RegionDiagram({ mask, label, color }: { mask: MaskRect; label: string; 
           }}
         />
         <div
-          className="absolute -top-px -right-px px-1.5 py-0.5 text-white text-xs font-bold rounded-bl-lg rounded-tr-lg"
+          className="absolute -top-px -right-px px-1.5 py-0.5 text-font text-xs font-bold rounded-bl-lg rounded-tr-lg"
           style={{ backgroundColor: color, fontSize: 9 }}
         >
           p{mask.page ?? 1}
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-1 text-xs font-mono text-slate-400 text-center">
+      <div className="grid grid-cols-2 gap-1 text-xs font-mono text-font/50 text-center">
         <span>x: {mask.x}</span>
         <span>y: {mask.y}</span>
         <span>w: {mask.width}</span>
@@ -90,30 +90,30 @@ function MaskInputFields({
   const dot = <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: color }} />;
   const field = (key: keyof MaskInput, lbl: string) => (
     <div key={key} className="space-y-1">
-      <label className="text-slate-500 text-xs">{lbl}</label>
+      <label className="text-font/40 text-xs">{lbl}</label>
       <input
         type="number"
         value={value[key]}
         onChange={e => onChange({ ...value, [key]: e.target.value })}
-        className="w-full bg-slate-800 border border-slate-700 focus:border-teal-500 text-white text-xs rounded-lg px-2.5 py-2 outline-none transition-colors font-mono"
+        className="w-full bg-black/20 border border-white/8 focus:border-theme/60 text-font text-xs rounded-lg px-2.5 py-2 outline-none transition-colors font-mono"
       />
     </div>
   );
   return (
     <div className="space-y-3">
-      <p className="text-slate-300 text-xs font-semibold flex items-center">{dot}{label}</p>
+      <p className="text-font/70 text-xs font-semibold flex items-center">{dot}{label}</p>
       <div className="grid grid-cols-5 gap-2">
         {field('x', 'X')} {field('y', 'Y')} {field('width', 'Width')}
         {field('height', 'Height')} {field('page', 'Page')}
       </div>
       <div className="space-y-1">
-        <label className="text-slate-500 text-xs">Anchor Text (Smart Page Detection)</label>
+        <label className="text-font/40 text-xs">Anchor Text (Smart Page Detection)</label>
         <input
           type="text"
           value={value.anchorText ?? ''}
           onChange={e => onChange({ ...value, anchorText: e.target.value })}
           placeholder="e.g. Authorized Signatory"
-          className="w-full bg-slate-800 border border-slate-700 focus:border-teal-500 text-white text-xs rounded-lg px-2.5 py-2 outline-none transition-colors placeholder:text-slate-600"
+          className="w-full bg-black/20 border border-white/8 focus:border-theme/60 text-font text-xs rounded-lg px-2.5 py-2 outline-none transition-colors placeholder:text-font/25"
         />
       </div>
     </div>
@@ -208,11 +208,11 @@ export default function TemplatesPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 bg-teal-500/15 border border-teal-500/30 rounded-xl flex items-center justify-center">
-          <LayoutTemplate size={18} className="text-teal-400" />
+          <LayoutTemplate size={18} className="text-theme" />
         </div>
         <div>
-          <h1 className="text-white text-xl font-black">Templates</h1>
-          <p className="text-slate-400 text-sm font-light">Saved signature region configurations</p>
+          <h1 className="text-font text-xl font-black">Templates</h1>
+          <p className="text-font/50 text-sm font-light">Saved signature region configurations</p>
         </div>
       </div>
 
@@ -228,23 +228,23 @@ export default function TemplatesPage() {
       )}
 
       <div className="grid lg:grid-cols-[280px_1fr] gap-6 items-start">
-        <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
-          <div className="px-4 py-3.5 border-b border-slate-700/40 flex items-center justify-between">
-            <h2 className="text-white font-bold text-sm">All Templates</h2>
-            <span className="text-slate-500 text-xs">{templates.length}</span>
+        <div className="bg-surface border border-white/8 rounded-2xl overflow-hidden">
+          <div className="px-4 py-3.5 border-b border-white/8 flex items-center justify-between">
+            <h2 className="text-font font-bold text-sm">All Templates</h2>
+            <span className="text-font/40 text-xs">{templates.length}</span>
           </div>
 
           {loading && (
             <div className="py-10 flex justify-center">
-              <Loader2 size={20} className="animate-spin text-teal-500" />
+              <Loader2 size={20} className="animate-spin text-theme" />
             </div>
           )}
 
           {!loading && templates.length === 0 && (
             <div className="py-10 text-center px-4">
-              <LayoutTemplate size={28} className="text-slate-700 mx-auto mb-2" />
-              <p className="text-slate-500 text-sm">No templates yet</p>
-              <p className="text-slate-600 text-xs mt-1">Save a template from the Verify tool</p>
+              <LayoutTemplate size={28} className="text-font/20 mx-auto mb-2" />
+              <p className="text-font/40 text-sm">No templates yet</p>
+              <p className="text-font/30 text-xs mt-1">Save a template from the Verify tool</p>
             </div>
           )}
 
@@ -252,22 +252,22 @@ export default function TemplatesPage() {
             <div
               key={t.id}
               onClick={() => handleSelect(t)}
-              className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer border-b border-slate-700/30 last:border-0 transition-colors group ${
+              className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer border-b border-white/8 last:border-0 transition-colors group ${
                 selected?.id === t.id
                   ? 'bg-teal-500/10 border-l-2 border-l-teal-500'
-                  : 'hover:bg-slate-800/50'
+                  : 'hover:bg-white/[0.04]'
               }`}
             >
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                selected?.id === t.id ? 'bg-teal-500/20' : 'bg-slate-800'
+                selected?.id === t.id ? 'bg-teal-500/20' : 'bg-black/20'
               }`}>
-                <FileText size={14} className={selected?.id === t.id ? 'text-teal-400' : 'text-slate-500'} />
+                <FileText size={14} className={selected?.id === t.id ? 'text-theme' : 'text-font/40'} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className={`text-sm font-semibold truncate ${selected?.id === t.id ? 'text-teal-300' : 'text-white'}`}>
+                <p className={`text-sm font-semibold truncate ${selected?.id === t.id ? 'text-teal-300' : 'text-font'}`}>
                   {t.name}
                 </p>
-                <p className="text-slate-600 text-xs">
+                <p className="text-font/30 text-xs">
                   {new Date(t.created_at).toLocaleDateString()}
                 </p>
               </div>
@@ -275,14 +275,14 @@ export default function TemplatesPage() {
                 <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
                   <button
                     onClick={() => handleDelete(t.id)}
-                    className="p-1.5 rounded-lg bg-red-500 hover:bg-red-400 text-white transition-colors"
+                    className="p-1.5 rounded-lg bg-red-500 hover:bg-red-400 text-font transition-colors"
                     title="Confirm delete"
                   >
                     <Check size={12} />
                   </button>
                   <button
                     onClick={() => setDeleteConfirm(null)}
-                    className="p-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                    className="p-1.5 rounded-lg bg-white/10 hover:bg-white/12 text-font/70 transition-colors"
                   >
                     <X size={12} />
                   </button>
@@ -290,7 +290,7 @@ export default function TemplatesPage() {
               ) : (
                 <button
                   onClick={e => { e.stopPropagation(); setDeleteConfirm(t.id); }}
-                  className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-all shrink-0"
+                  className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/15 text-font/40 hover:text-red-400 transition-all shrink-0"
                 >
                   <Trash2 size={13} />
                 </button>
@@ -299,25 +299,25 @@ export default function TemplatesPage() {
           ))}
         </div>
 
-        <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
+        <div className="bg-surface border border-white/8 rounded-2xl overflow-hidden">
           {!selected ? (
             <div className="py-20 flex flex-col items-center gap-3">
-              <ChevronLeft size={24} className="text-slate-700" />
-              <p className="text-slate-500 text-sm">Select a template to view details</p>
+              <ChevronLeft size={24} className="text-font/20" />
+              <p className="text-font/40 text-sm">Select a template to view details</p>
             </div>
           ) : (
             <div>
-              <div className="px-6 py-4 border-b border-slate-700/40 flex items-center justify-between gap-4">
+              <div className="px-6 py-4 border-b border-white/8 flex items-center justify-between gap-4">
                 {editing ? (
                   <input
                     type="text"
                     value={editName}
                     onChange={e => setEditName(e.target.value)}
-                    className="flex-1 bg-slate-800 border border-teal-500/50 text-white font-bold text-base rounded-xl px-4 py-2 outline-none"
+                    className="flex-1 bg-black/20 border border-teal-500/50 text-font font-bold text-base rounded-xl px-4 py-2 outline-none"
                     autoFocus
                   />
                 ) : (
-                  <h3 className="text-white font-bold text-base flex-1 truncate">{selected.name}</h3>
+                  <h3 className="text-font font-bold text-base flex-1 truncate">{selected.name}</h3>
                 )}
 
                 <div className="flex items-center gap-2 shrink-0">
@@ -325,14 +325,14 @@ export default function TemplatesPage() {
                     <>
                       <button
                         onClick={handleCancelEdit}
-                        className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold rounded-xl transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-2 bg-black/20 hover:bg-white/10 text-font/70 text-sm font-semibold rounded-xl transition-colors"
                       >
                         <RotateCcw size={13} /> Cancel
                       </button>
                       <button
                         onClick={handleSave}
                         disabled={saving || !editName.trim()}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors"
+                        className="flex items-center gap-1.5 px-4 py-2 bg-theme hover:bg-teal-400 disabled:opacity-40 text-font text-sm font-semibold rounded-xl transition-colors"
                       >
                         {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
                         Save Changes
@@ -341,7 +341,7 @@ export default function TemplatesPage() {
                   ) : (
                     <button
                       onClick={handleEdit}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold rounded-xl transition-colors border border-slate-700 hover:border-slate-600"
+                      className="flex items-center gap-1.5 px-4 py-2 bg-black/20 hover:bg-white/10 text-font/70 text-sm font-semibold rounded-xl transition-colors border border-white/8 hover:border-white/12"
                     >
                       <Pencil size={13} /> Edit
                     </button>
@@ -350,7 +350,7 @@ export default function TemplatesPage() {
               </div>
 
               <div className="p-6 space-y-6">
-                <p className="text-slate-500 text-xs">
+                <p className="text-font/40 text-xs">
                   Created {new Date(selected.created_at).toLocaleString()}
                 </p>
 
@@ -364,8 +364,8 @@ export default function TemplatesPage() {
                 </div>
 
                 {editing && (
-                  <div className="space-y-4 pt-4 border-t border-slate-700/40">
-                    <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide">Edit Region Coordinates</p>
+                  <div className="space-y-4 pt-4 border-t border-white/8">
+                    <p className="text-font/50 text-xs font-semibold uppercase tracking-wide">Edit Region Coordinates</p>
                     <MaskInputFields
                       label="Document 1 — Reference region"
                       value={editMask1}
@@ -387,7 +387,7 @@ export default function TemplatesPage() {
                       { label: 'Document 1 Region', mask: selected.mask1, color: '#14b8a6' },
                       { label: 'Document 2 Region', mask: selected.mask2, color: '#f59e0b' },
                     ].map(({ label, mask, color }) => (
-                      <div key={label} className="bg-slate-800/60 border border-slate-700/40 rounded-xl p-4 space-y-2">
+                      <div key={label} className="bg-black/15 border border-white/8 rounded-xl p-4 space-y-2">
                         <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color }}>
                           <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
                           {label}
@@ -401,15 +401,15 @@ export default function TemplatesPage() {
                             ['Page', String(mask.page ?? 1)],
                           ].map(([k, v]) => (
                             <div key={k} className="flex items-center justify-between">
-                              <span className="text-slate-500 text-xs">{k}</span>
-                              <span className="text-white text-xs font-mono font-semibold">{v}</span>
+                              <span className="text-font/40 text-xs">{k}</span>
+                              <span className="text-font text-xs font-mono font-semibold">{v}</span>
                             </div>
                           ))}
                         </div>
                         {mask.anchorText && (
-                          <div className="mt-2 pt-2 border-t border-slate-700/40">
-                            <span className="text-slate-500 text-xs block mb-0.5">Anchor Text</span>
-                            <span className="text-teal-400 text-xs font-mono">&ldquo;{mask.anchorText}&rdquo;</span>
+                          <div className="mt-2 pt-2 border-t border-white/8">
+                            <span className="text-font/40 text-xs block mb-0.5">Anchor Text</span>
+                            <span className="text-theme text-xs font-mono">&ldquo;{mask.anchorText}&rdquo;</span>
                           </div>
                         )}
                       </div>

@@ -45,7 +45,7 @@ export default function MaskSelector({ onApply }: Props) {
   return (
     <div ref={ref} className="relative">
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1.5 text-slate-400 shrink-0">
+        <div className="flex items-center gap-1.5 text-font/50 shrink-0">
           <Layers size={13} />
           <span className="text-xs font-semibold">Apply saved mask</span>
         </div>
@@ -53,8 +53,8 @@ export default function MaskSelector({ onApply }: Props) {
           onClick={() => setOpen(o => !o)}
           className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition-all min-w-0 flex-1 ${
             selected
-              ? 'bg-teal-500/10 border-teal-500/40 text-teal-300'
-              : 'bg-slate-800 border-slate-600 hover:border-slate-400 text-slate-300'
+              ? 'bg-theme/10 border-theme/40 text-theme'
+              : 'bg-black/20 border-white/10 hover:border-white/20 text-font/60'
           }`}
         >
           <span className="truncate flex-1 text-left text-xs">
@@ -65,7 +65,7 @@ export default function MaskSelector({ onApply }: Props) {
       </div>
 
       {open && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl overflow-hidden">
+        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-surface border border-white/10 rounded-xl shadow-2xl overflow-hidden">
           <div className="max-h-60 overflow-y-auto">
             {masks.map(mask => {
               const maskCount = mask.masks2 && mask.masks2.length > 1 ? mask.masks2.length : null;
@@ -73,12 +73,12 @@ export default function MaskSelector({ onApply }: Props) {
                 <button
                   key={mask.id}
                   onClick={() => handleSelect(mask)}
-                  className="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-700 transition-colors text-left"
+                  className="w-full flex items-start gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="text-white text-xs font-semibold truncate">{mask.name}</p>
-                      {selected?.id === mask.id && <Check size={12} className="text-teal-400 shrink-0" />}
+                      <p className="text-font text-xs font-semibold truncate">{mask.name}</p>
+                      {selected?.id === mask.id && <Check size={12} className="text-theme shrink-0" />}
                       {maskCount && (
                         <span className="flex items-center gap-0.5 text-teal-400/60 text-xs shrink-0">
                           <Layers size={10} />

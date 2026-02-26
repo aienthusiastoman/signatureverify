@@ -3,6 +3,13 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --theme-color: #14b8a6;
+    --bg-color: #020617;
+    --surface-color: #0f172a;
+    --font-color: #f8fafc;
+  }
+
   html {
     font-family: 'Montserrat', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;

@@ -84,36 +84,36 @@ export default function TemplatePanel({ onLoad, mask1, mask2, masks2, showSave =
   const canSave = !!mask1 && !!mask2;
 
   return (
-    <div className="border border-slate-700 rounded-xl overflow-hidden">
+    <div className="border border-white/8 rounded-xl overflow-hidden">
       <button
         onClick={() => setExpanded(p => !p)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-slate-800 hover:bg-slate-700/80 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 bg-black/20 hover:bg-white/[0.04] transition-colors"
       >
         <div className="flex items-center gap-2">
-          <Bookmark size={15} className="text-teal-400" />
-          <span className="text-sm font-medium text-white">Saved Templates</span>
+          <Bookmark size={15} className="text-theme" />
+          <span className="text-sm font-medium text-font">Saved Templates</span>
           {templates.length > 0 && (
-            <span className="text-xs bg-teal-600/30 text-teal-300 px-1.5 py-0.5 rounded-full">
+            <span className="text-xs bg-theme/20 text-theme px-1.5 py-0.5 rounded-full">
               {templates.length}
             </span>
           )}
         </div>
-        {expanded ? <ChevronUp size={15} className="text-slate-400" /> : <ChevronDown size={15} className="text-slate-400" />}
+        {expanded ? <ChevronUp size={15} className="text-font/40" /> : <ChevronDown size={15} className="text-font/40" />}
       </button>
 
       {expanded && (
-        <div className="bg-slate-900 border-t border-slate-700">
+        <div className="bg-black/10 border-t border-white/8">
           {showSave && canSave && (
-            <div className="p-3 border-b border-slate-700/50">
+            <div className="p-3 border-b border-white/8">
               {!showSaveForm ? (
                 <button
                   onClick={() => setShowSaveForm(true)}
-                  className="flex items-center gap-2 text-xs text-teal-400 hover:text-teal-300 transition-colors"
+                  className="flex items-center gap-2 text-xs text-theme hover:opacity-80 transition-opacity"
                 >
                   <BookmarkCheck size={13} />
                   Save current regions as template
                   {masks2 && masks2.length > 1 && (
-                    <span className="text-slate-500">({masks2.length} masks)</span>
+                    <span className="text-font/35">({masks2.length} masks)</span>
                   )}
                 </button>
               ) : (
@@ -124,20 +124,20 @@ export default function TemplatePanel({ onLoad, mask1, mask2, masks2, showSave =
                       value={templateName}
                       onChange={e => setTemplateName(e.target.value)}
                       placeholder="Template name..."
-                      className="flex-1 bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-3 py-1.5 placeholder:text-slate-500 focus:outline-none focus:border-teal-500"
+                      className="flex-1 bg-black/20 border border-white/10 text-font text-xs rounded-lg px-3 py-1.5 placeholder:text-font/25 focus:outline-none focus:border-theme/60"
                       onKeyDown={e => e.key === 'Enter' && handleSave()}
                       autoFocus
                     />
                     <button
                       onClick={handleSave}
                       disabled={saving || !templateName.trim()}
-                      className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1"
+                      className="px-3 py-1.5 bg-theme hover:opacity-90 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-opacity flex items-center gap-1"
                     >
                       {saving ? <Loader2 size={12} className="animate-spin" /> : 'Save'}
                     </button>
                     <button
                       onClick={() => { setShowSaveForm(false); setSaveError(''); }}
-                      className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs rounded-lg transition-colors"
+                      className="px-3 py-1.5 bg-white/8 hover:bg-white/12 text-font/60 text-xs rounded-lg transition-colors"
                     >
                       Cancel
                     </button>
@@ -150,12 +150,12 @@ export default function TemplatePanel({ onLoad, mask1, mask2, masks2, showSave =
 
           {loading && (
             <div className="flex items-center justify-center py-6">
-              <Loader2 size={16} className="text-slate-400 animate-spin" />
+              <Loader2 size={16} className="text-font/40 animate-spin" />
             </div>
           )}
 
           {!loading && templates.length === 0 && (
-            <p className="text-slate-500 text-xs text-center py-6">No saved templates yet</p>
+            <p className="text-font/35 text-xs text-center py-6">No saved templates yet</p>
           )}
 
           {!loading && templates.map(t => {
@@ -164,19 +164,19 @@ export default function TemplatePanel({ onLoad, mask1, mask2, masks2, showSave =
               <div
                 key={t.id}
                 onClick={() => handleLoad(t)}
-                className="flex items-center justify-between px-4 py-3 hover:bg-slate-800/60 cursor-pointer border-b border-slate-700/30 last:border-0 transition-colors group"
+                className="flex items-center justify-between px-4 py-3 hover:bg-white/[0.03] cursor-pointer border-b border-white/6 last:border-0 transition-colors group"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="text-white text-sm font-medium truncate">{t.name}</p>
+                    <p className="text-font text-sm font-medium truncate">{t.name}</p>
                     {maskCount && (
-                      <span className="flex items-center gap-0.5 text-teal-400/70 text-xs shrink-0">
+                      <span className="flex items-center gap-0.5 text-theme/70 text-xs shrink-0">
                         <Layers size={10} />
                         {maskCount}
                       </span>
                     )}
                   </div>
-                  <p className="text-slate-500 text-xs mt-0.5">
+                  <p className="text-font/35 text-xs mt-0.5">
                     Doc1: {formatMaskLabel(t.mask1)} &nbsp;·&nbsp;
                     {maskCount
                       ? `Doc2: ${maskCount} masks`
@@ -185,10 +185,10 @@ export default function TemplatePanel({ onLoad, mask1, mask2, masks2, showSave =
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 ml-2">
-                  <span className="text-teal-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Apply</span>
+                  <span className="text-theme text-xs opacity-0 group-hover:opacity-100 transition-opacity">Apply</span>
                   <button
                     onClick={e => handleDelete(t.id, e)}
-                    className="p-1 rounded hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-colors"
+                    className="p-1 rounded hover:bg-red-500/20 text-font/35 hover:text-red-400 transition-colors"
                   >
                     <Trash2 size={13} />
                   </button>

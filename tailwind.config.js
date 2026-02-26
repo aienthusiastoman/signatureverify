@@ -7,6 +7,10 @@ export default {
         sans: ['Montserrat', 'sans-serif'],
       },
       colors: {
+        theme: 'var(--theme-color)',
+        page: 'var(--bg-color)',
+        surface: 'var(--surface-color)',
+        font: 'var(--font-color)',
         teal: {
           50:  '#e6f4f7',
           100: '#b3dde6',

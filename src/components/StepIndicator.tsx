@@ -26,17 +26,17 @@ export default function StepIndicator({ current }: Props) {
               <div
                 className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all duration-300 ${
                   done
-                    ? 'bg-teal-600 text-white shadow-lg shadow-teal-600/30'
+                    ? 'bg-theme text-white shadow-lg shadow-theme/30'
                     : active
-                    ? 'bg-teal-500 text-white ring-4 ring-teal-500/20 shadow-lg'
-                    : 'bg-slate-700 text-slate-400'
+                    ? 'bg-theme text-white ring-4 ring-theme/20 shadow-lg'
+                    : 'bg-white/10 text-font/40'
                 }`}
               >
                 {done ? <Check size={16} /> : i + 1}
               </div>
               <span
                 className={`text-xs font-medium whitespace-nowrap ${
-                  active ? 'text-teal-400' : done ? 'text-slate-300' : 'text-slate-500'
+                  active ? 'text-theme' : done ? 'text-font/60' : 'text-font/30'
                 }`}
               >
                 {step.label}
@@ -45,7 +45,7 @@ export default function StepIndicator({ current }: Props) {
             {i < STEPS.length - 1 && (
               <div
                 className={`w-16 h-0.5 mb-5 mx-1 transition-all duration-500 ${
-                  i < currentIndex ? 'bg-teal-600' : 'bg-slate-700'
+                  i < currentIndex ? 'bg-theme' : 'bg-white/10'
                 }`}
               />
             )}

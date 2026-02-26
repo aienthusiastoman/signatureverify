@@ -117,37 +117,37 @@ export default function MasksPage() {
         <div className="flex items-center gap-4">
           <button
             onClick={handleCancelCreate}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold rounded-xl transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-black/20 hover:bg-white/10 text-font/70 text-sm font-semibold rounded-xl transition-colors"
           >
             <ArrowLeft size={15} /> Back
           </button>
           <div>
-            <h2 className="text-white text-xl font-black">Create New Mask</h2>
-            <p className="text-slate-400 text-sm font-light">Upload a sample document for each slot and draw the signature region</p>
+            <h2 className="text-font text-xl font-black">Create New Mask</h2>
+            <p className="text-font/50 text-sm font-light">Upload a sample document for each slot and draw the signature region</p>
           </div>
         </div>
 
-        <div className="bg-slate-900/50 border border-slate-700 rounded-2xl p-5 space-y-3">
-          <label className="text-slate-300 text-sm font-semibold">Mask Name</label>
+        <div className="bg-surface/80 border border-white/8 rounded-2xl p-5 space-y-3">
+          <label className="text-font/70 text-sm font-semibold">Mask Name</label>
           <input
             type="text"
             value={form.name}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             placeholder="e.g. Insurance Form — Insured Signature"
-            className="w-full bg-slate-900 border border-slate-600 focus:border-teal-500 outline-none rounded-xl px-4 py-3 text-white text-sm placeholder:text-slate-500 transition-colors"
+            className="w-full bg-surface border border-white/12 focus:border-theme/60 outline-none rounded-xl px-4 py-3 text-font text-sm placeholder:text-font/25 transition-colors"
           />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div className="bg-slate-900/50 border border-slate-700 rounded-2xl p-5 space-y-4">
+          <div className="bg-surface/80 border border-white/8 rounded-2xl p-5 space-y-4">
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 rounded-full bg-teal-400" />
-              <p className="text-slate-200 text-sm font-bold">Document 1 — Reference</p>
+              <p className="text-font/70 text-sm font-bold">Document 1 — Reference</p>
               {form.mask1 && (form.mask1.autoDetect || form.mask1.width > 5) && (
                 <CheckCircle2 size={14} className="text-emerald-400 ml-auto" />
               )}
             </div>
-            <p className="text-slate-500 text-xs">Upload a sample PDF to draw the signature region for document type 1</p>
+            <p className="text-font/40 text-xs">Upload a sample PDF to draw the signature region for document type 1</p>
             {!form.file1 ? (
               <FileDropZone
                 label="Drop sample PDF here"
@@ -157,15 +157,15 @@ export default function MasksPage() {
               />
             ) : (
               <div className="space-y-3">
-                <div className="flex items-center gap-3 bg-slate-800 rounded-xl px-3 py-2">
-                  <span className="text-slate-300 text-xs flex-1 truncate">{form.file1.file.name}</span>
+                <div className="flex items-center gap-3 bg-black/20 rounded-xl px-3 py-2">
+                  <span className="text-font/70 text-xs flex-1 truncate">{form.file1.file.name}</span>
                   <button
                     onClick={() => {
                       if (form.file1?.previewUrl) URL.revokeObjectURL(form.file1.previewUrl);
                       canvas1Ref.current = null;
                       setForm(f => ({ ...f, file1: null, mask1: null }));
                     }}
-                    className="text-slate-500 hover:text-red-400 transition-colors"
+                    className="text-font/40 hover:text-red-400 transition-colors"
                   >
                     ×
                   </button>
@@ -181,15 +181,15 @@ export default function MasksPage() {
             )}
           </div>
 
-          <div className="bg-slate-900/50 border border-slate-700 rounded-2xl p-5 space-y-4">
+          <div className="bg-surface/80 border border-white/8 rounded-2xl p-5 space-y-4">
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-              <p className="text-slate-200 text-sm font-bold">Document 2 — To Verify</p>
+              <p className="text-font/70 text-sm font-bold">Document 2 — To Verify</p>
               {form.masks2.some(m => m.autoDetect || m.regions.length > 0) && (
                 <CheckCircle2 size={14} className="text-emerald-400 ml-auto" />
               )}
             </div>
-            <p className="text-slate-500 text-xs">Upload a sample PDF to define one or more signature mask regions for document type 2</p>
+            <p className="text-font/40 text-xs">Upload a sample PDF to define one or more signature mask regions for document type 2</p>
             {!form.file2 ? (
               <FileDropZone
                 label="Drop sample PDF here"
@@ -199,14 +199,14 @@ export default function MasksPage() {
               />
             ) : (
               <div className="space-y-3">
-                <div className="flex items-center gap-3 bg-slate-800 rounded-xl px-3 py-2">
-                  <span className="text-slate-300 text-xs flex-1 truncate">{form.file2.file.name}</span>
+                <div className="flex items-center gap-3 bg-black/20 rounded-xl px-3 py-2">
+                  <span className="text-font/70 text-xs flex-1 truncate">{form.file2.file.name}</span>
                   <button
                     onClick={() => {
                       if (form.file2?.previewUrl) URL.revokeObjectURL(form.file2.previewUrl);
                       setForm(f => ({ ...f, file2: null, masks2: [createEmptyMask(1, 0)] }));
                     }}
-                    className="text-slate-500 hover:text-red-400 transition-colors"
+                    className="text-font/40 hover:text-red-400 transition-colors"
                   >
                     ×
                   </button>
@@ -231,14 +231,14 @@ export default function MasksPage() {
         <div className="flex justify-end gap-3 pb-8">
           <button
             onClick={handleCancelCreate}
-            className="px-5 py-3 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl transition-colors text-sm"
+            className="px-5 py-3 bg-black/20 hover:bg-white/10 text-font font-semibold rounded-xl transition-colors text-sm"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={!canSave || saving || saveSuccess}
-            className="flex items-center gap-2 px-6 py-3 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors shadow-lg shadow-teal-500/20 text-sm"
+            className="flex items-center gap-2 px-6 py-3 bg-theme hover:bg-teal-400 disabled:opacity-40 disabled:cursor-not-allowed text-font font-bold rounded-xl transition-colors shadow-lg shadow-teal-500/20 text-sm"
           >
             {saveSuccess ? (
               <><CheckCircle2 size={15} /> Saved!</>
@@ -257,14 +257,14 @@ export default function MasksPage() {
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-white text-xl font-black">Masks</h2>
-          <p className="text-slate-400 text-sm font-light mt-0.5">
+          <h2 className="text-font text-xl font-black">Masks</h2>
+          <p className="text-font/50 text-sm font-light mt-0.5">
             Define signature regions for document pairs — reuse across comparisons
           </p>
         </div>
         <button
           onClick={handleStartCreate}
-          className="flex items-center gap-2 px-4 py-2.5 bg-teal-500 hover:bg-teal-400 text-white font-bold rounded-xl text-sm transition-colors shadow-lg shadow-teal-500/20"
+          className="flex items-center gap-2 px-4 py-2.5 bg-theme hover:bg-teal-400 text-font font-bold rounded-xl text-sm transition-colors shadow-lg shadow-teal-500/20"
         >
           <Plus size={15} /> New Mask
         </button>
@@ -273,22 +273,22 @@ export default function MasksPage() {
       {loadingList ? (
         <div className="flex items-center justify-center py-20">
           <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-slate-400 text-sm">Loading masks...</p>
+            <div className="w-8 h-8 border-2 border-theme border-t-transparent rounded-full animate-spin" />
+            <p className="text-font/50 text-sm">Loading masks...</p>
           </div>
         </div>
       ) : masks.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center">
-            <FileSearch size={24} className="text-slate-500" />
+          <div className="w-14 h-14 rounded-2xl bg-black/20 border border-white/8 flex items-center justify-center">
+            <FileSearch size={24} className="text-font/40" />
           </div>
           <div className="text-center">
-            <p className="text-slate-300 font-semibold">No masks yet</p>
-            <p className="text-slate-500 text-sm mt-1">Create a mask to save signature regions for quick reuse</p>
+            <p className="text-font/70 font-semibold">No masks yet</p>
+            <p className="text-font/40 text-sm mt-1">Create a mask to save signature regions for quick reuse</p>
           </div>
           <button
             onClick={handleStartCreate}
-            className="flex items-center gap-2 px-5 py-2.5 bg-teal-500 hover:bg-teal-400 text-white font-bold rounded-xl text-sm transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 bg-theme hover:bg-teal-400 text-font font-bold rounded-xl text-sm transition-colors"
           >
             <Plus size={14} /> Create Your First Mask
           </button>
@@ -319,11 +319,11 @@ function MaskCard({ mask, deleting, onDelete }: MaskCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
-    <div className="bg-slate-900/50 border border-slate-700 hover:border-slate-500 rounded-2xl p-5 space-y-4 transition-colors group">
+    <div className="bg-surface/80 border border-white/8 hover:border-white/12 rounded-2xl p-5 space-y-4 transition-colors group">
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
-          <p className="text-white font-bold text-sm truncate">{mask.name}</p>
-          <p className="text-slate-500 text-xs mt-0.5">
+          <p className="text-font font-bold text-sm truncate">{mask.name}</p>
+          <p className="text-font/40 text-xs mt-0.5">
             {new Date(mask.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
           </p>
         </div>
@@ -331,7 +331,7 @@ function MaskCard({ mask, deleting, onDelete }: MaskCardProps) {
           <button
             onClick={() => setConfirmDelete(true)}
             disabled={deleting}
-            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-all"
+            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-500/15 text-font/40 hover:text-red-400 transition-all"
           >
             <Trash2 size={14} />
           </button>
@@ -340,13 +340,13 @@ function MaskCard({ mask, deleting, onDelete }: MaskCardProps) {
             <button
               onClick={() => { onDelete(); setConfirmDelete(false); }}
               disabled={deleting}
-              className="px-2.5 py-1 text-xs font-bold rounded-lg bg-red-500 hover:bg-red-400 text-white transition-colors"
+              className="px-2.5 py-1 text-xs font-bold rounded-lg bg-red-500 hover:bg-red-400 text-font transition-colors"
             >
               {deleting ? '...' : 'Delete'}
             </button>
             <button
               onClick={() => setConfirmDelete(false)}
-              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-white/10 hover:bg-white/12 text-font/70 transition-colors"
             >
               Cancel
             </button>
@@ -367,11 +367,11 @@ function MaskCard({ mask, deleting, onDelete }: MaskCardProps) {
               if (m.autoDetect) parts.push('Auto-detect');
               const summary = parts.length > 0 ? parts.join(' · ') : 'No region';
               return (
-                <div key={m.id} className="flex items-center gap-2.5 bg-slate-800/60 rounded-xl px-3 py-2">
+                <div key={m.id} className="flex items-center gap-2.5 bg-black/15 rounded-xl px-3 py-2">
                   <div className="w-2 h-2 rounded-full shrink-0 bg-amber-400" />
                   <span className="text-xs font-bold shrink-0 text-amber-400">Doc 2</span>
-                  <span className="text-slate-500 text-xs shrink-0">{m.label}</span>
-                  <span className="text-slate-400 text-xs truncate">{summary}</span>
+                  <span className="text-font/40 text-xs shrink-0">{m.label}</span>
+                  <span className="text-font/50 text-xs truncate">{summary}</span>
                   {mask.masks2 && mask.masks2.length > 1 && idx === 0 && (
                     <span className="ml-auto flex items-center gap-0.5 text-teal-400/60 text-xs shrink-0">
                       <Layers size={10} /> {mask.masks2.length}
@@ -393,10 +393,10 @@ function RegionRow({ label, color, maskSummaryText }: { label: string; color: 't
   const dot = color === 'teal' ? 'bg-teal-400' : 'bg-amber-400';
   const text = color === 'teal' ? 'text-teal-400' : 'text-amber-400';
   return (
-    <div className="flex items-center gap-2.5 bg-slate-800/60 rounded-xl px-3 py-2">
+    <div className="flex items-center gap-2.5 bg-black/15 rounded-xl px-3 py-2">
       <div className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
       <span className={`text-xs font-bold shrink-0 ${text}`}>{label}</span>
-      <span className="text-slate-400 text-xs truncate">{maskSummaryText}</span>
+      <span className="text-font/50 text-xs truncate">{maskSummaryText}</span>
     </div>
   );
 }

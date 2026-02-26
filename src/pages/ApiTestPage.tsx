@@ -291,19 +291,19 @@ func main() {
 function MaskFields({ label, value, onChange }: { label: string; value: MaskInput; onChange: (v: MaskInput) => void }) {
   const field = (key: keyof MaskInput, placeholder: string) => (
     <div className="space-y-1">
-      <label className="text-slate-500 text-xs">{placeholder}</label>
+      <label className="text-font/40 text-xs">{placeholder}</label>
       <input
         type="number"
         value={value[key]}
         onChange={e => onChange({ ...value, [key]: e.target.value })}
-        className="w-full bg-slate-800 border border-slate-700 focus:border-teal-500 text-white text-sm rounded-lg px-3 py-2 outline-none transition-colors"
+        className="w-full bg-black/20 border border-white/10 focus:border-theme/60 text-font text-sm rounded-lg px-3 py-2 outline-none transition-colors"
         placeholder="0"
       />
     </div>
   );
   return (
     <div>
-      <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-2">{label}</p>
+      <p className="text-font/50 text-xs font-semibold uppercase tracking-wide mb-2">{label}</p>
       <div className="grid grid-cols-5 gap-2">
         {field('x', 'X')} {field('y', 'Y')} {field('width', 'Width')}
         {field('height', 'Height')} {field('page', 'Page')}
@@ -545,21 +545,21 @@ export default function ApiTestPage() {
 
   const FileInput = ({ label, file, onFile, onClear }: { label: string; file: File | null; onFile: (f: File) => void; onClear: () => void }) => (
     <div>
-      <p className="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-2">{label}</p>
+      <p className="text-font/50 text-xs font-semibold uppercase tracking-wide mb-2">{label}</p>
       {file ? (
-        <div className="flex items-center gap-3 bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3">
+        <div className="flex items-center gap-3 bg-black/20 border border-white/10 rounded-xl px-4 py-3">
           <div className="flex-1 min-w-0">
-            <p className="text-white text-sm font-medium truncate">{file.name}</p>
-            <p className="text-slate-500 text-xs">{(file.size / 1024).toFixed(1)} KB</p>
+            <p className="text-font text-sm font-medium truncate">{file.name}</p>
+            <p className="text-font/35 text-xs">{(file.size / 1024).toFixed(1)} KB</p>
           </div>
-          <button onClick={onClear} className="text-slate-500 hover:text-red-400 transition-colors p-1">
+          <button onClick={onClear} className="text-font/35 hover:text-red-400 transition-colors p-1">
             <X size={15} />
           </button>
         </div>
       ) : (
-        <label className="flex flex-col items-center gap-2 border-2 border-dashed border-slate-700 hover:border-teal-500/50 rounded-xl p-5 cursor-pointer transition-colors group">
-          <Upload size={18} className="text-slate-600 group-hover:text-teal-500 transition-colors" />
-          <span className="text-slate-500 text-xs group-hover:text-slate-400 transition-colors">Click to upload PDF / image</span>
+        <label className="flex flex-col items-center gap-2 border-2 border-dashed border-white/10 hover:border-theme/50 rounded-xl p-5 cursor-pointer transition-colors group">
+          <Upload size={18} className="text-font/25 group-hover:text-theme transition-colors" />
+          <span className="text-font/35 text-xs group-hover:text-font/50 transition-colors">Click to upload PDF / image</span>
           <input type="file" accept=".pdf,.png,.jpg,.jpeg" className="sr-only" onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
         </label>
       )}
@@ -569,34 +569,34 @@ export default function ApiTestPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-teal-500/15 border border-teal-500/30 rounded-xl flex items-center justify-center">
-          <FlaskConical size={18} className="text-teal-400" />
+        <div className="w-10 h-10 bg-theme/15 border border-theme/30 rounded-xl flex items-center justify-center">
+          <FlaskConical size={18} className="text-theme" />
         </div>
         <div>
-          <h1 className="text-white text-xl font-black">API Testing</h1>
-          <p className="text-slate-400 text-sm font-light">Test the API live and get generated code snippets</p>
+          <h1 className="text-font text-xl font-black">API Testing</h1>
+          <p className="text-font/50 text-sm font-light">Test the API live and get generated code snippets</p>
         </div>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <div className="space-y-5">
-          <div className="bg-slate-900 border border-slate-700/60 rounded-2xl p-5 space-y-5">
-            <h2 className="text-white font-bold text-sm">Request Configuration</h2>
+          <div className="bg-surface border border-white/8 rounded-2xl p-5 space-y-5">
+            <h2 className="text-font font-bold text-sm">Request Configuration</h2>
 
             {apiKeys.length > 0 && (
               <div>
-                <label className="text-slate-400 text-xs font-semibold uppercase tracking-wide mb-2 block">API Key</label>
+                <label className="text-font/50 text-xs font-semibold uppercase tracking-wide mb-2 block">API Key</label>
                 <div className="relative">
                   <select
                     value={selectedKeyId}
                     onChange={e => setSelectedKeyId(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 focus:border-teal-500 text-white text-sm rounded-xl px-4 py-3 outline-none transition-colors appearance-none pr-10"
+                    className="w-full bg-black/20 border border-white/10 focus:border-theme/60 text-font text-sm rounded-xl px-4 py-3 outline-none transition-colors appearance-none pr-10"
                   >
                     {apiKeys.map(k => (
                       <option key={k.id} value={k.id}>{k.name} ({k.key_prefix}••••)</option>
                     ))}
                   </select>
-                  <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-font/40 pointer-events-none" />
                 </div>
               </div>
             )}
@@ -604,14 +604,14 @@ export default function ApiTestPage() {
             <FileInput label="Document 1 — Reference" file={file1} onFile={setFile1} onClear={() => setFile1(null)} />
             <FileInput label="Document 2 — To Verify" file={file2} onFile={setFile2} onClear={() => setFile2(null)} />
 
-            <div className="pt-1 border-t border-slate-700/40 space-y-4">
+            <div className="pt-1 border-t border-white/8 space-y-4">
               <div className="flex items-center justify-between">
-                <p className="text-white text-sm font-bold">Signature Regions</p>
-                <div className="flex items-center gap-0.5 bg-slate-800 rounded-lg p-0.5">
+                <p className="text-font text-sm font-bold">Signature Regions</p>
+                <div className="flex items-center gap-0.5 bg-black/20 rounded-lg p-0.5">
                   <button
                     onClick={() => setUseTemplate(false)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                      !useTemplate ? 'bg-teal-500 text-white' : 'text-slate-400 hover:text-white'
+                      !useTemplate ? 'bg-theme text-white' : 'text-font/40 hover:text-font'
                     }`}
                   >
                     Coordinates
@@ -619,7 +619,7 @@ export default function ApiTestPage() {
                   <button
                     onClick={() => setUseTemplate(true)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                      useTemplate ? 'bg-teal-500 text-white' : 'text-slate-400 hover:text-white'
+                      useTemplate ? 'bg-theme text-white' : 'text-font/40 hover:text-font'
                     }`}
                   >
                     <LayoutTemplate size={12} /> Template
@@ -630,7 +630,7 @@ export default function ApiTestPage() {
               {useTemplate ? (
                 <div className="space-y-3">
                   {templates.length === 0 ? (
-                    <div className="flex items-center gap-2 px-4 py-3 bg-slate-800/60 border border-slate-700/40 rounded-xl text-slate-500 text-sm">
+                    <div className="flex items-center gap-2 px-4 py-3 bg-black/15 border border-white/8 rounded-xl text-font/40 text-sm">
                       <LayoutTemplate size={15} />
                       No templates saved yet. Create one in the Verify tool.
                     </div>
@@ -640,47 +640,47 @@ export default function ApiTestPage() {
                         <select
                           value={selectedTemplateId}
                           onChange={e => setSelectedTemplateId(e.target.value)}
-                          className="w-full bg-slate-800 border border-slate-700 focus:border-teal-500 text-white text-sm rounded-xl px-4 py-3 outline-none transition-colors appearance-none pr-10"
+                          className="w-full bg-black/20 border border-white/10 focus:border-theme/60 text-font text-sm rounded-xl px-4 py-3 outline-none transition-colors appearance-none pr-10"
                         >
                           <option value="">— Select a template —</option>
                           {templates.map(t => (
                             <option key={t.id} value={t.id}>{t.name}</option>
                           ))}
                         </select>
-                        <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-font/40 pointer-events-none" />
                       </div>
 
                       {selectedTemplate && (
-                        <div className="text-xs font-mono bg-slate-800/50 rounded-xl px-4 py-3 border border-slate-700/40 space-y-3">
+                        <div className="text-xs font-mono bg-black/15 rounded-xl px-4 py-3 border border-white/8 space-y-3">
                           <div>
-                            <p className="text-slate-500 mb-1">Doc 1 — Region</p>
-                            <p className="text-slate-300">x:{selectedTemplate.mask1.x} y:{selectedTemplate.mask1.y} {selectedTemplate.mask1.width}×{selectedTemplate.mask1.height} p{selectedTemplate.mask1.page ?? 1}</p>
+                            <p className="text-font/40 mb-1">Doc 1 — Region</p>
+                            <p className="text-font/70">x:{selectedTemplate.mask1.x} y:{selectedTemplate.mask1.y} {selectedTemplate.mask1.width}×{selectedTemplate.mask1.height} p{selectedTemplate.mask1.page ?? 1}</p>
                             {selectedTemplate.mask1.anchorText && (
-                              <p className="text-teal-400 mt-0.5 truncate" title={selectedTemplate.mask1.anchorText}>anchor: {selectedTemplate.mask1.anchorText}</p>
+                              <p className="text-theme mt-0.5 truncate" title={selectedTemplate.mask1.anchorText}>anchor: {selectedTemplate.mask1.anchorText}</p>
                             )}
                           </div>
                           {selectedTemplate.masks2 && selectedTemplate.masks2.length > 0 ? (
                             <div className="space-y-2">
-                              <div className="flex items-center gap-1.5 text-slate-500">
+                              <div className="flex items-center gap-1.5 text-font/40">
                                 <Layers size={10} />
                                 <span>Doc 2 — {selectedTemplate.masks2.length} mask{selectedTemplate.masks2.length > 1 ? 's' : ''}</span>
                               </div>
                               {selectedTemplate.masks2.map((m) => (
-                                <div key={m.id} className="pl-2 border-l border-slate-700">
+                                <div key={m.id} className="pl-2 border-l border-white/10">
                                   <p className="text-amber-400">{m.label} — p{m.page ?? 1}</p>
                                   {m.regions.map((r, ri) => (
-                                    <p key={ri} className="text-slate-400">x:{r.x} y:{r.y} {r.width}×{r.height}</p>
+                                    <p key={ri} className="text-font/50">x:{r.x} y:{r.y} {r.width}×{r.height}</p>
                                   ))}
-                                  {m.autoDetect && <p className="text-teal-400">auto-detect</p>}
+                                  {m.autoDetect && <p className="text-theme">auto-detect</p>}
                                 </div>
                               ))}
                             </div>
                           ) : (
                             <div>
-                              <p className="text-slate-500 mb-1">Doc 2 — Region</p>
-                              <p className="text-slate-300">x:{selectedTemplate.mask2.x} y:{selectedTemplate.mask2.y} {selectedTemplate.mask2.width}×{selectedTemplate.mask2.height} p{selectedTemplate.mask2.page ?? 1}</p>
+                              <p className="text-font/40 mb-1">Doc 2 — Region</p>
+                              <p className="text-font/70">x:{selectedTemplate.mask2.x} y:{selectedTemplate.mask2.y} {selectedTemplate.mask2.width}×{selectedTemplate.mask2.height} p{selectedTemplate.mask2.page ?? 1}</p>
                               {selectedTemplate.mask2.anchorText && (
-                                <p className="text-teal-400 mt-0.5 truncate" title={selectedTemplate.mask2.anchorText}>anchor: {selectedTemplate.mask2.anchorText}</p>
+                                <p className="text-theme mt-0.5 truncate" title={selectedTemplate.mask2.anchorText}>anchor: {selectedTemplate.mask2.anchorText}</p>
                               )}
                             </div>
                           )}
@@ -697,15 +697,15 @@ export default function ApiTestPage() {
               )}
             </div>
 
-            <div className="pt-1 border-t border-slate-700/40 space-y-2">
-              <label className="text-slate-400 text-xs font-semibold uppercase tracking-wide block">Comparison Mode</label>
+            <div className="pt-1 border-t border-white/8 space-y-2">
+              <label className="text-font/50 text-xs font-semibold uppercase tracking-wide block">Comparison Mode</label>
               <div className="flex gap-2">
                 <button
                   onClick={() => setCompareMode('lenient')}
                   className={`flex-1 px-3 py-2.5 rounded-xl text-xs font-semibold text-left transition-all border ${
                     compareMode === 'lenient'
-                      ? 'bg-teal-500/15 border-teal-500/50 text-white'
-                      : 'bg-slate-800/60 border-slate-700/40 text-slate-400 hover:text-white'
+                      ? 'bg-theme/15 border-theme/50 text-font'
+                      : 'bg-black/15 border-white/8 text-font/40 hover:text-font'
                   }`}
                 >
                   <p className="font-bold">Lenient</p>
@@ -715,8 +715,8 @@ export default function ApiTestPage() {
                   onClick={() => setCompareMode('strict')}
                   className={`flex-1 px-3 py-2.5 rounded-xl text-xs font-semibold text-left transition-all border ${
                     compareMode === 'strict'
-                      ? 'bg-amber-500/15 border-amber-500/50 text-white'
-                      : 'bg-slate-800/60 border-slate-700/40 text-slate-400 hover:text-white'
+                      ? 'bg-amber-500/15 border-amber-500/50 text-font'
+                      : 'bg-black/15 border-white/8 text-font/40 hover:text-font'
                   }`}
                 >
                   <p className="font-bold">Strict</p>
@@ -726,8 +726,8 @@ export default function ApiTestPage() {
                   onClick={() => setCompareMode('super_lenient')}
                   className={`flex-1 px-3 py-2.5 rounded-xl text-xs font-semibold text-left transition-all border ${
                     compareMode === 'super_lenient'
-                      ? 'bg-sky-500/15 border-sky-500/50 text-white'
-                      : 'bg-slate-800/60 border-slate-700/40 text-slate-400 hover:text-white'
+                      ? 'bg-sky-500/15 border-sky-500/50 text-font'
+                      : 'bg-black/15 border-white/8 text-font/40 hover:text-font'
                   }`}
                 >
                   <p className="font-bold">Super Lenient</p>
@@ -739,7 +739,7 @@ export default function ApiTestPage() {
             <button
               onClick={handleRun}
               disabled={!file1 || !file2 || loading || (useTemplate && !selectedTemplateId && templates.length > 0)}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors shadow-lg shadow-teal-500/20"
+              className="w-full flex items-center justify-center gap-2 py-3 bg-theme hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-opacity shadow-lg shadow-theme/20"
             >
               {loading
                 ? <><Loader2 size={16} className="animate-spin" /> Running...</>
@@ -749,10 +749,10 @@ export default function ApiTestPage() {
         </div>
 
         <div className="space-y-5">
-          <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-700/40 flex items-center justify-between">
+          <div className="bg-surface border border-white/8 rounded-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-white/8 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <h2 className="text-white font-bold text-sm">Response</h2>
+                <h2 className="text-font font-bold text-sm">Response</h2>
                 {!loading && response && (
                   <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
                     responseOk ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'
@@ -764,7 +764,7 @@ export default function ApiTestPage() {
               {response && (
                 <button
                   onClick={copyResponse}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-semibold transition-colors text-slate-300"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-black/20 hover:bg-white/8 rounded-lg text-xs font-semibold transition-colors text-font/60"
                 >
                   {copiedResponse ? <><CheckCircle size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
                 </button>
@@ -772,33 +772,33 @@ export default function ApiTestPage() {
             </div>
             <div className="p-5 min-h-[140px]">
               {loading && (
-                <div className="flex items-center gap-3 text-slate-400">
-                  <Loader2 size={16} className="animate-spin text-teal-500" />
+                <div className="flex items-center gap-3 text-font/40">
+                  <Loader2 size={16} className="animate-spin text-theme" />
                   <span className="text-sm">Waiting for response...</span>
                 </div>
               )}
               {!loading && !response && (
-                <p className="text-slate-600 text-sm italic">Run a test to see the response here.</p>
+                <p className="text-font/25 text-sm italic">Run a test to see the response here.</p>
               )}
               {response && (
-                <pre className="text-slate-300 text-xs font-mono leading-relaxed whitespace-pre-wrap overflow-x-auto">
+                <pre className="text-font/70 text-xs font-mono leading-relaxed whitespace-pre-wrap overflow-x-auto">
                   {response}
                 </pre>
               )}
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-700/40 flex items-center justify-between flex-wrap gap-3">
-              <h2 className="text-white font-bold text-sm">Code Example</h2>
+          <div className="bg-surface border border-white/8 rounded-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-white/8 flex items-center justify-between flex-wrap gap-3">
+              <h2 className="text-font font-bold text-sm">Code Example</h2>
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-0.5 bg-slate-800 rounded-lg p-0.5">
+                <div className="flex items-center gap-0.5 bg-black/20 rounded-lg p-0.5">
                   {(Object.keys(LANG_LABELS) as Language[]).map(l => (
                     <button
                       key={l}
                       onClick={() => setLang(l)}
                       className={`px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                        lang === l ? 'bg-teal-500 text-white' : 'text-slate-400 hover:text-white'
+                        lang === l ? 'bg-theme text-white' : 'text-font/40 hover:text-font'
                       }`}
                     >
                       {LANG_LABELS[l]}
@@ -807,14 +807,14 @@ export default function ApiTestPage() {
                 </div>
                 <button
                   onClick={copyCode}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-semibold transition-colors text-slate-300"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-black/20 hover:bg-white/8 rounded-lg text-xs font-semibold transition-colors text-font/60"
                 >
                   {copiedCode ? <><CheckCircle size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
                 </button>
               </div>
             </div>
             <div className="p-5">
-              <pre className="text-slate-300 text-xs font-mono leading-relaxed whitespace-pre-wrap overflow-x-auto">
+              <pre className="text-font/70 text-xs font-mono leading-relaxed whitespace-pre-wrap overflow-x-auto">
                 {codeExample}
               </pre>
             </div>

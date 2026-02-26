@@ -58,27 +58,27 @@ export default function FileDropZone({ label, file, onFile, onClear }: Props) {
 
   if (file) {
     return (
-      <div className="bg-slate-800 border border-slate-600 rounded-2xl overflow-hidden">
+      <div className="bg-black/20 border border-white/10 rounded-2xl overflow-hidden">
         <div className="p-4 flex items-start gap-3">
-          <div className="p-2 bg-teal-600/20 rounded-lg shrink-0">
+          <div className="p-2 bg-theme/15 rounded-lg shrink-0">
             {file.type === 'pdf' ? (
-              <FileText size={20} className="text-teal-400" />
+              <FileText size={20} className="text-theme" />
             ) : (
-              <ImageIcon size={20} className="text-teal-400" />
+              <ImageIcon size={20} className="text-theme" />
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-white font-medium text-sm truncate">{file.file.name}</p>
-            <p className="text-slate-400 text-xs mt-0.5">
+            <p className="text-font font-medium text-sm truncate">{file.file.name}</p>
+            <p className="text-font/40 text-xs mt-0.5">
               {(file.file.size / 1024).toFixed(0)} KB &middot; {file.type.toUpperCase()}
               {file.pageCount && file.pageCount > 1 && (
-                <span className="ml-1 text-teal-400">&middot; {file.pageCount} pages</span>
+                <span className="ml-1 text-theme">&middot; {file.pageCount} pages</span>
               )}
             </p>
           </div>
           <button
             onClick={onClear}
-            className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors"
+            className="p-1.5 rounded-lg hover:bg-red-500/20 text-font/40 hover:text-red-400 transition-colors"
           >
             <X size={16} />
           </button>
@@ -88,15 +88,15 @@ export default function FileDropZone({ label, file, onFile, onClear }: Props) {
             <img
               src={file.previewUrl}
               alt="Preview"
-              className="w-full h-36 object-contain bg-slate-900 rounded-xl border border-slate-700"
+              className="w-full h-36 object-contain bg-black/30 rounded-xl border border-white/8"
             />
           </div>
         )}
         {file.type === 'pdf' && (
           <div className="px-4 pb-4">
-            <div className="w-full h-20 bg-slate-900 rounded-xl border border-slate-700 flex items-center justify-center gap-3">
-              <FileText size={24} className="text-slate-500" />
-              <p className="text-slate-400 text-xs">
+            <div className="w-full h-20 bg-black/30 rounded-xl border border-white/8 flex items-center justify-center gap-3">
+              <FileText size={24} className="text-font/25" />
+              <p className="text-font/40 text-xs">
                 {file.pageCount === 1 ? '1 page' : `${file.pageCount} pages`}
               </p>
             </div>
@@ -110,8 +110,8 @@ export default function FileDropZone({ label, file, onFile, onClear }: Props) {
     <div
       className={`relative border-2 border-dashed rounded-2xl transition-all duration-200 cursor-pointer ${
         dragging
-          ? 'border-teal-400 bg-teal-500/10'
-          : 'border-slate-600 hover:border-slate-400 hover:bg-slate-800/50'
+          ? 'border-theme bg-theme/10'
+          : 'border-white/15 hover:border-white/30 hover:bg-white/[0.03]'
       }`}
       onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
       onDragLeave={() => setDragging(false)}
@@ -126,17 +126,17 @@ export default function FileDropZone({ label, file, onFile, onClear }: Props) {
         onChange={onInputChange}
       />
       <div className="p-8 flex flex-col items-center gap-3 text-center">
-        <div className={`p-3 rounded-2xl transition-colors ${dragging ? 'bg-teal-500/20' : 'bg-slate-800'}`}>
+        <div className={`p-3 rounded-2xl transition-colors ${dragging ? 'bg-theme/20' : 'bg-black/20'}`}>
           {processing ? (
-            <Loader2 size={24} className="text-teal-400 animate-spin" />
+            <Loader2 size={24} className="text-theme animate-spin" />
           ) : (
-            <Upload size={24} className={dragging ? 'text-teal-400' : 'text-slate-400'} />
+            <Upload size={24} className={dragging ? 'text-theme' : 'text-font/30'} />
           )}
         </div>
         <div>
-          <p className="text-white font-medium text-sm">{processing ? 'Reading file...' : label}</p>
-          <p className="text-slate-400 text-xs mt-1">Drag and drop or click to browse</p>
-          <p className="text-slate-500 text-xs mt-1">PDF, PNG, JPG up to 10MB</p>
+          <p className="text-font font-medium text-sm">{processing ? 'Reading file...' : label}</p>
+          <p className="text-font/40 text-xs mt-1">Drag and drop or click to browse</p>
+          <p className="text-font/25 text-xs mt-1">PDF, PNG, JPG up to 10MB</p>
         </div>
         {error && (
           <p className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">

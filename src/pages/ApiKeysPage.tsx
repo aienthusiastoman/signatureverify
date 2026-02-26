@@ -89,12 +89,12 @@ export default function ApiKeysPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-teal-500/15 border border-teal-500/30 rounded-xl flex items-center justify-center">
-          <Key size={18} className="text-teal-400" />
+        <div className="w-10 h-10 bg-theme/15 border border-theme/30 rounded-xl flex items-center justify-center">
+          <Key size={18} className="text-theme" />
         </div>
         <div>
-          <h1 className="text-white text-xl font-black">API Keys</h1>
-          <p className="text-slate-400 text-sm font-light">Manage access keys for the REST API</p>
+          <h1 className="text-font text-xl font-black">API Keys</h1>
+          <p className="text-font/50 text-sm font-light">Manage access keys for the REST API</p>
         </div>
       </div>
 
@@ -104,12 +104,12 @@ export default function ApiKeysPage() {
             <CheckCircle size={16} />
             API Key Created — Copy it now, it won't be shown again
           </div>
-          <div className="flex items-center gap-3 bg-slate-900/60 border border-slate-700 rounded-xl px-4 py-3">
-            <code className="flex-1 font-mono text-sm text-slate-200 break-all">{newlyCreatedKey}</code>
+          <div className="flex items-center gap-3 bg-black/20 border border-white/10 rounded-xl px-4 py-3">
+            <code className="flex-1 font-mono text-sm text-font break-all">{newlyCreatedKey}</code>
             <button
               onClick={copyKey}
               className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                copied ? 'bg-emerald-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                copied ? 'bg-emerald-600 text-white' : 'bg-white/10 hover:bg-white/15 text-font/70'
               }`}
             >
               {copied ? <><CheckCircle size={13} /> Copied</> : <><Copy size={13} /> Copy</>}
@@ -117,46 +117,46 @@ export default function ApiKeysPage() {
           </div>
           <button
             onClick={() => setNewlyCreatedKey(null)}
-            className="text-slate-500 hover:text-slate-300 text-xs transition-colors"
+            className="text-font/40 hover:text-font/70 text-xs transition-colors"
           >
             I've saved my key, dismiss
           </button>
         </div>
       )}
 
-      <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700/40">
-          <h2 className="font-bold text-white text-sm">Your Keys</h2>
+      <div className="bg-surface border border-white/8 rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+          <h2 className="font-bold text-font text-sm">Your Keys</h2>
           <button
             onClick={() => setShowCreateForm(p => !p)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-teal-500 hover:bg-teal-400 text-white text-sm font-semibold rounded-xl transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 bg-theme hover:opacity-90 text-white text-sm font-semibold rounded-xl transition-opacity"
           >
             <Plus size={15} /> New Key
           </button>
         </div>
 
         {showCreateForm && (
-          <div className="px-5 py-4 border-b border-slate-700/40 bg-slate-800/40 space-y-3">
+          <div className="px-5 py-4 border-b border-white/8 bg-black/10 space-y-3">
             <div className="flex gap-3">
               <input
                 type="text"
                 value={newKeyName}
                 onChange={e => setNewKeyName(e.target.value)}
                 placeholder="Key name (e.g. Production)"
-                className="flex-1 bg-slate-800 border border-slate-600 focus:border-teal-500 text-white rounded-xl px-4 py-2.5 text-sm outline-none transition-colors placeholder:text-slate-500"
+                className="flex-1 bg-black/20 border border-white/10 focus:border-theme/60 text-font rounded-xl px-4 py-2.5 text-sm outline-none transition-colors placeholder:text-font/30"
                 onKeyDown={e => e.key === 'Enter' && handleCreate()}
                 autoFocus
               />
               <button
                 onClick={handleCreate}
                 disabled={creating || !newKeyName.trim()}
-                className="px-4 py-2.5 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors"
+                className="px-4 py-2.5 bg-theme hover:opacity-90 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-opacity"
               >
                 {creating ? 'Creating...' : 'Create'}
               </button>
               <button
                 onClick={() => { setShowCreateForm(false); setError(''); }}
-                className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm rounded-xl transition-colors"
+                className="px-4 py-2.5 bg-white/8 hover:bg-white/12 text-font/60 text-sm rounded-xl transition-colors"
               >
                 Cancel
               </button>
@@ -165,33 +165,33 @@ export default function ApiKeysPage() {
           </div>
         )}
 
-        {loading && <div className="py-12 text-center text-slate-500 text-sm">Loading...</div>}
+        {loading && <div className="py-12 text-center text-font/40 text-sm">Loading...</div>}
 
         {!loading && keys.length === 0 && (
           <div className="py-12 text-center space-y-2">
-            <Key size={28} className="text-slate-600 mx-auto" />
-            <p className="text-slate-400 font-medium">No API keys yet</p>
-            <p className="text-slate-500 text-sm font-light">Create your first key to start using the API</p>
+            <Key size={28} className="text-font/20 mx-auto" />
+            <p className="text-font/50 font-medium">No API keys yet</p>
+            <p className="text-font/35 text-sm font-light">Create your first key to start using the API</p>
           </div>
         )}
 
         {!loading && keys.map(k => (
-          <div key={k.id} className="flex items-center justify-between px-5 py-4 border-b border-slate-700/30 last:border-0 hover:bg-slate-800/30 transition-colors">
+          <div key={k.id} className="flex items-center justify-between px-5 py-4 border-b border-white/6 last:border-0 hover:bg-white/[0.03] transition-colors">
             <div className="space-y-0.5 min-w-0">
-              <p className="text-white font-semibold text-sm">{k.name}</p>
-              <p className="text-slate-500 font-mono text-xs">{k.key_prefix}•••••••••••••••</p>
-              <p className="text-slate-600 text-xs">
+              <p className="text-font font-semibold text-sm">{k.name}</p>
+              <p className="text-font/40 font-mono text-xs">{k.key_prefix}•••••••••••••••</p>
+              <p className="text-font/25 text-xs">
                 Created {new Date(k.created_at).toLocaleDateString()}
                 {k.last_used_at && ` · Last used ${new Date(k.last_used_at).toLocaleDateString()}`}
               </p>
             </div>
             <div className="flex items-center gap-3 shrink-0 ml-4">
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${k.is_active ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${k.is_active ? 'bg-emerald-500/15 text-emerald-400' : 'bg-white/8 text-font/40'}`}>
                 {k.is_active ? 'Active' : 'Inactive'}
               </span>
               <button
                 onClick={() => handleDelete(k.id)}
-                className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition-colors"
+                className="p-1.5 rounded-lg hover:bg-red-500/15 text-font/30 hover:text-red-400 transition-colors"
               >
                 <Trash2 size={15} />
               </button>

@@ -242,7 +242,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
           </button>
         )}
         <button onClick={handleReset} disabled={!loaded}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 text-xs font-medium rounded-lg transition-colors">
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/12 disabled:opacity-40 disabled:cursor-not-allowed text-font text-xs font-medium rounded-lg transition-colors">
           <RotateCcw size={13} /> Reset
         </button>
 
@@ -250,7 +250,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
           <div
             onClick={handleToggleAutoDetect}
             className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 cursor-pointer ${
-              autoDetect ? 'bg-emerald-500' : 'bg-slate-600'
+              autoDetect ? 'bg-emerald-500' : 'bg-white/10'
             }`}
           >
             <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
@@ -258,8 +258,8 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
             }`} />
           </div>
           <div className="flex items-center gap-1 text-xs">
-            <Scan size={12} className={autoDetect ? 'text-emerald-400' : 'text-slate-500'} />
-            <span className={autoDetect ? 'text-emerald-300 font-semibold' : 'text-slate-400'}>
+            <Scan size={12} className={autoDetect ? 'text-emerald-400' : 'text-font/35'} />
+            <span className={autoDetect ? 'text-emerald-300 font-semibold' : 'text-font/40'}>
               Auto-detect signature
             </span>
           </div>
@@ -280,7 +280,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
       )}
 
       {!autoDetect && (
-        <div className="flex items-center gap-1.5 text-slate-400 text-xs">
+        <div className="flex items-center gap-1.5 text-font/40 text-xs">
           <Move size={12} /> <span>Draw to select region manually</span>
         </div>
       )}
@@ -288,19 +288,19 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
       {isPdf && pageCount > 1 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-slate-400 text-xs font-medium">
+            <p className="text-font/40 text-xs font-medium">
               Select page containing the signature
             </p>
             <div className="flex items-center gap-1">
               <button onClick={() => handlePageSelect(Math.max(1, selectedPage - 1))} disabled={selectedPage <= 1}
-                className="p-1 rounded hover:bg-slate-700 disabled:opacity-30 text-slate-400 transition-colors">
+                className="p-1 rounded hover:bg-white/8 disabled:opacity-30 text-font/40 transition-colors">
                 <ChevronLeft size={14} />
               </button>
-              <span className="text-slate-300 text-xs px-1">
+              <span className="text-font/70 text-xs px-1">
                 {selectedPage} / {pageCount}
               </span>
               <button onClick={() => handlePageSelect(Math.min(pageCount, selectedPage + 1))} disabled={selectedPage >= pageCount}
-                className="p-1 rounded hover:bg-slate-700 disabled:opacity-30 text-slate-400 transition-colors">
+                className="p-1 rounded hover:bg-white/8 disabled:opacity-30 text-font/40 transition-colors">
                 <ChevronRight size={14} />
               </button>
             </div>
@@ -323,21 +323,21 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
                   className={`shrink-0 relative rounded-lg overflow-hidden border-2 transition-all ${
                     isSelected
                       ? isAutoPage ? 'border-emerald-500 shadow-lg shadow-emerald-500/30' : 'border-blue-500 shadow-lg shadow-blue-500/30'
-                      : 'border-slate-600 hover:border-slate-400'
+                      : 'border-white/10 hover:border-white/25'
                   }`}
                   style={{ width: 80 }}
                 >
                   {thumbnails[pageNum] ? (
                     <img src={thumbnails[pageNum]} alt={`Page ${pageNum}`} className="w-full block bg-white" />
                   ) : (
-                    <div className="w-full h-24 bg-slate-800 flex items-center justify-center">
-                      <FileText size={16} className="text-slate-500" />
+                    <div className="w-full h-24 bg-black/20 flex items-center justify-center">
+                      <FileText size={16} className="text-font/35" />
                     </div>
                   )}
                   <div className={`absolute bottom-0 left-0 right-0 text-center py-0.5 text-xs font-medium ${
                     isSelected
                       ? isAutoPage ? 'bg-emerald-600 text-white' : 'bg-blue-600 text-white'
-                      : 'bg-slate-900/80 text-slate-300'
+                      : 'bg-black/20 text-font/70'
                   }`}>
                     {pageNum}
                   </div>
@@ -348,7 +348,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
               );
             })}
             {thumbsLoading && !Object.keys(thumbnails).length && (
-              <div className="shrink-0 w-20 h-28 bg-slate-800 rounded-lg border border-slate-600 flex items-center justify-center">
+              <div className="shrink-0 w-20 h-28 bg-black/20 rounded-lg border border-white/10 flex items-center justify-center">
                 <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
               </div>
             )}
@@ -357,17 +357,17 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
       )}
 
       {showAnchorText && isPdf && (
-        <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-4 space-y-2">
+        <div className="bg-black/20 border border-white/8 rounded-xl p-4 space-y-2">
           <div className="flex items-center gap-2">
-            <ScanText size={14} className="text-teal-400 shrink-0" />
-            <p className="text-slate-300 text-xs font-semibold">Smart Page Detection</p>
+            <ScanText size={14} className="text-theme shrink-0" />
+            <p className="text-font/70 text-xs font-semibold">Smart Page Detection</p>
             {mask?.pageThumbnail && (
               <span className="ml-auto text-xs text-emerald-400 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /> Page fingerprint saved
               </span>
             )}
           </div>
-          <p className="text-slate-500 text-xs leading-relaxed">
+          <p className="text-font/35 text-xs leading-relaxed">
             A page fingerprint is captured automatically when you draw a region. Optionally add anchor text as a fallback for extra reliability.
           </p>
           <input
@@ -375,23 +375,23 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
             value={mask?.anchorText ?? ''}
             onChange={e => onMaskChange({ ...(mask ?? { x: 0, y: 0, width: 0, height: 0 }), anchorText: e.target.value })}
             placeholder="e.g. Authorized Signatory (optional)"
-            className="w-full bg-slate-900 border border-slate-600 focus:border-teal-500 outline-none rounded-lg px-3 py-2 text-white text-sm placeholder:text-slate-500 transition-colors"
+            className="w-full bg-surface border border-white/10 focus:border-theme outline-none rounded-lg px-3 py-2 text-font text-sm placeholder:text-font/35 transition-colors"
           />
           {mask?.anchorText && (
-            <p className="text-teal-400 text-xs flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-teal-400 rounded-full" />
+            <p className="text-theme text-xs flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-theme rounded-full" />
               Will also search for &ldquo;{mask.anchorText}&rdquo; as a fallback
             </p>
           )}
         </div>
       )}
 
-      <div ref={containerRef} className="relative bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
+      <div ref={containerRef} className="relative bg-surface rounded-xl overflow-hidden border border-white/8">
         {!loaded && !loadError && (
           <div className="flex items-center justify-center h-52">
             <div className="text-center">
               <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-              <p className="text-slate-400 text-xs">
+              <p className="text-font/40 text-xs">
                 {isPdf ? `Rendering page ${selectedPage}...` : 'Loading document...'}
               </p>
             </div>
@@ -431,9 +431,9 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
       {!autoDetect && maskOnThisPage && mask && mask.width > 0 && (
         <div className="grid grid-cols-4 gap-2">
           {[{ label: 'X', value: mask.x }, { label: 'Y', value: mask.y }, { label: 'W', value: mask.width }, { label: 'H', value: mask.height }].map(({ label, value }) => (
-            <div key={label} className="bg-slate-800 rounded-lg p-2 text-center border border-slate-700">
-              <p className="text-slate-400 text-xs">{label}</p>
-              <p className="text-white text-sm font-mono font-semibold">{value}px</p>
+            <div key={label} className="bg-black/20 rounded-lg p-2 text-center border border-white/8">
+              <p className="text-font/40 text-xs">{label}</p>
+              <p className="text-font text-sm font-mono font-semibold">{value}px</p>
             </div>
           ))}
         </div>

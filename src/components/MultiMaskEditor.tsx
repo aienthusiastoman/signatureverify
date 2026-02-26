@@ -321,10 +321,10 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-slate-300 text-sm font-semibold">Masks for Document 2</p>
+        <p className="text-font/70 text-sm font-semibold">Masks for Document 2</p>
         <button
           onClick={handleAddMask}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold rounded-lg transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-theme hover:bg-theme text-font text-xs font-semibold rounded-lg transition-colors"
         >
           <Plus size={13} /> Add Mask
         </button>
@@ -341,8 +341,8 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
                 onClick={() => setActiveMaskIdx(idx)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-l-lg text-xs font-semibold transition-all border ${
                   isActive
-                    ? 'border-transparent text-white shadow-sm'
-                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'
+                    ? 'border-transparent text-font shadow-sm'
+                    : 'bg-black/20 border-white/8 text-font/40 hover:text-font hover:border-white/25'
                 }`}
                 style={isActive ? { backgroundColor: color + 'cc', borderColor: color } : {}}
               >
@@ -360,7 +360,7 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
                   className={`px-1.5 py-1.5 rounded-r-lg border-y border-r text-xs transition-colors ${
                     isActive
                       ? 'border-transparent text-white/70 hover:text-white'
-                      : 'bg-slate-800 border-slate-700 text-slate-500 hover:text-red-400 hover:border-red-500/40'
+                      : 'bg-black/20 border-white/8 text-font/35 hover:text-red-400 hover:border-red-500/40'
                   }`}
                   style={isActive ? { backgroundColor: color + 'cc', borderColor: color } : {}}
                 >
@@ -373,14 +373,14 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
       </div>
 
       {activeMask && (
-        <div className="bg-slate-900/60 border border-slate-700 rounded-xl p-4 space-y-4">
+        <div className="bg-surface/60 border border-white/8 rounded-xl p-4 space-y-4">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex-1 min-w-32">
               <input
                 type="text"
                 value={activeMask.label}
                 onChange={e => handleLabelChange(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-600 focus:border-teal-500 outline-none rounded-lg px-3 py-1.5 text-white text-sm placeholder:text-slate-500 transition-colors"
+                className="w-full bg-black/20 border border-white/10 focus:border-theme outline-none rounded-lg px-3 py-1.5 text-font text-sm placeholder:text-font/35 transition-colors"
                 placeholder="Mask label"
               />
             </div>
@@ -397,7 +397,7 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
             <button
               onClick={handleResetRegions}
               disabled={!canvasState}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-slate-200 text-xs font-medium rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/12 disabled:opacity-40 text-font text-xs font-medium rounded-lg transition-colors"
             >
               <RotateCcw size={13} /> Reset
             </button>
@@ -406,7 +406,7 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
               <div
                 onClick={handleToggleAutoDetect}
                 className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 cursor-pointer ${
-                  activeMask.autoDetect ? 'bg-emerald-500' : 'bg-slate-600'
+                  activeMask.autoDetect ? 'bg-emerald-500' : 'bg-white/10'
                 }`}
               >
                 <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
@@ -414,8 +414,8 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
                 }`} />
               </div>
               <div className="flex items-center gap-1 text-xs">
-                <Scan size={12} className={activeMask.autoDetect ? 'text-emerald-400' : 'text-slate-500'} />
-                <span className={activeMask.autoDetect ? 'text-emerald-300 font-semibold' : 'text-slate-400'}>
+                <Scan size={12} className={activeMask.autoDetect ? 'text-emerald-400' : 'text-font/35'} />
+                <span className={activeMask.autoDetect ? 'text-emerald-300 font-semibold' : 'text-font/40'}>
                   Auto-detect
                 </span>
               </div>
@@ -431,18 +431,18 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
 
           {!activeMask.autoDetect && activeMask.regions.length > 0 && (
             <div className="space-y-1">
-              <p className="text-slate-400 text-xs font-medium">Regions in this mask</p>
+              <p className="text-font/40 text-xs font-medium">Regions in this mask</p>
               <div className="flex flex-wrap gap-2">
                 {activeMask.regions.map((r, ri) => (
-                  <div key={ri} className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs">
+                  <div key={ri} className="flex items-center gap-1.5 bg-black/20 border border-white/8 rounded-lg px-2 py-1 text-xs">
                     <span
                       className="w-4 h-4 rounded-sm flex items-center justify-center text-white font-bold text-[10px]"
                       style={{ backgroundColor: maskColor(activeMaskIdx) }}
                     >
                       {ri + 1}
                     </span>
-                    <span className="text-slate-300 font-mono">{r.width}×{r.height}</span>
-                    <button onClick={() => handleRemoveRegion(ri)} className="text-slate-500 hover:text-red-400 transition-colors">
+                    <span className="text-font/70 font-mono">{r.width}×{r.height}</span>
+                    <button onClick={() => handleRemoveRegion(ri)} className="text-font/35 hover:text-red-400 transition-colors">
                       <Trash2 size={11} />
                     </button>
                   </div>
@@ -452,7 +452,7 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
           )}
 
           {!activeMask.autoDetect && (
-            <div className="flex items-center gap-1.5 text-slate-400 text-xs">
+            <div className="flex items-center gap-1.5 text-font/40 text-xs">
               <Move size={12} /> Draw to add a region — multiple allowed
             </div>
           )}
@@ -460,15 +460,15 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
           {isPdf && pageCount > 1 && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <p className="text-slate-400 text-xs font-medium">Page for this mask</p>
+                <p className="text-font/40 text-xs font-medium">Page for this mask</p>
                 <div className="flex items-center gap-1">
                   <button onClick={() => handlePageSelect(Math.max(1, selectedPage - 1))} disabled={selectedPage <= 1}
-                    className="p-1 rounded hover:bg-slate-700 disabled:opacity-30 text-slate-400">
+                    className="p-1 rounded hover:bg-white/8 disabled:opacity-30 text-font/40">
                     <ChevronLeft size={14} />
                   </button>
-                  <span className="text-slate-300 text-xs px-1">{selectedPage} / {pageCount}</span>
+                  <span className="text-font/70 text-xs px-1">{selectedPage} / {pageCount}</span>
                   <button onClick={() => handlePageSelect(Math.min(pageCount, selectedPage + 1))} disabled={selectedPage >= pageCount}
-                    className="p-1 rounded hover:bg-slate-700 disabled:opacity-30 text-slate-400">
+                    className="p-1 rounded hover:bg-white/8 disabled:opacity-30 text-font/40">
                     <ChevronRight size={14} />
                   </button>
                 </div>
@@ -492,12 +492,12 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
                       {thumbnails[pageNum] ? (
                         <img src={thumbnails[pageNum]} alt={`Page ${pageNum}`} className="w-full block bg-white" />
                       ) : (
-                        <div className="w-full h-24 bg-slate-800 flex items-center justify-center">
-                          <FileText size={16} className="text-slate-500" />
+                        <div className="w-full h-24 bg-black/20 flex items-center justify-center">
+                          <FileText size={16} className="text-font/35" />
                         </div>
                       )}
                       <div className={`absolute bottom-0 left-0 right-0 text-center py-0.5 text-xs font-medium ${
-                        isSelected ? 'text-white' : 'bg-slate-900/80 text-slate-300'
+                        isSelected ? 'text-white' : 'bg-black/20 text-font/70'
                       }`} style={isSelected ? { backgroundColor: maskColor(activeMaskIdx) } : {}}>
                         {pageNum}
                       </div>
@@ -505,7 +505,7 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
                   );
                 })}
                 {thumbsLoading && !Object.keys(thumbnails).length && (
-                  <div className="shrink-0 w-20 h-28 bg-slate-800 rounded-lg border border-slate-600 flex items-center justify-center">
+                  <div className="shrink-0 w-20 h-28 bg-black/20 rounded-lg border border-white/10 flex items-center justify-center">
                     <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                   </div>
                 )}
@@ -513,26 +513,26 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
             </div>
           )}
 
-          <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 space-y-2">
+          <div className="bg-black/20 border border-white/8 rounded-xl p-3 space-y-2">
             <div className="flex items-center gap-2">
-              <ScanText size={13} className="text-teal-400 shrink-0" />
-              <p className="text-slate-300 text-xs font-semibold">Smart Page Detection</p>
+              <ScanText size={13} className="text-theme shrink-0" />
+              <p className="text-font/70 text-xs font-semibold">Smart Page Detection</p>
             </div>
             <input
               type="text"
               value={activeMask.anchorText ?? ''}
               onChange={e => handleAnchorChange(e.target.value)}
               placeholder="Anchor text fallback (optional)"
-              className="w-full bg-slate-900 border border-slate-600 focus:border-teal-500 outline-none rounded-lg px-3 py-2 text-white text-sm placeholder:text-slate-500 transition-colors"
+              className="w-full bg-surface border border-white/10 focus:border-theme outline-none rounded-lg px-3 py-2 text-font text-sm placeholder:text-font/35 transition-colors"
             />
           </div>
 
-          <div ref={containerRef} className="relative bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
+          <div ref={containerRef} className="relative bg-surface rounded-xl overflow-hidden border border-white/8">
             {!canvasState && !loadError && (
               <div className="flex items-center justify-center h-52">
                 <div className="text-center">
                   <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                  <p className="text-slate-400 text-xs">Rendering page {selectedPage}...</p>
+                  <p className="text-font/40 text-xs">Rendering page {selectedPage}...</p>
                 </div>
               </div>
             )}

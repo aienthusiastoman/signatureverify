@@ -38,7 +38,7 @@ function ScoreBadge({ score, size = 'lg' }: { score: number; size?: 'sm' | 'lg' 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-white font-semibold">
+        <h3 className="text-font font-semibold">
           {score !== undefined ? 'Final Confidence Score' : 'Confidence Score'}
         </h3>
         <div className={`flex items-center gap-1.5 text-sm font-medium ${color}`}>
@@ -51,10 +51,10 @@ function ScoreBadge({ score, size = 'lg' }: { score: number; size?: 'sm' | 'lg' 
         <span className={`text-6xl font-black tabular-nums ${color}`}>
           {clamp.toFixed(1)}
         </span>
-        <span className="text-slate-400 text-2xl font-light mb-2">%</span>
+        <span className="text-font/40 text-2xl font-light mb-2">%</span>
       </div>
 
-      <div className="h-3 bg-slate-700 rounded-full overflow-hidden">
+      <div className="h-3 bg-white/10 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-1000 ${bgColor}`}
           style={{ width: `${clamp}%` }}
@@ -64,15 +64,15 @@ function ScoreBadge({ score, size = 'lg' }: { score: number; size?: 'sm' | 'lg' 
       <div className="grid grid-cols-3 gap-3 text-center text-xs">
         <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-2">
           <p className="text-red-400 font-semibold">0–49%</p>
-          <p className="text-slate-400 mt-0.5">Mismatch</p>
+          <p className="text-font/40 mt-0.5">Mismatch</p>
         </div>
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2">
           <p className="text-amber-400 font-semibold">50–74%</p>
-          <p className="text-slate-400 mt-0.5">Moderate</p>
+          <p className="text-font/40 mt-0.5">Moderate</p>
         </div>
         <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2">
           <p className="text-emerald-400 font-semibold">75–100%</p>
-          <p className="text-slate-400 mt-0.5">Match</p>
+          <p className="text-font/40 mt-0.5">Match</p>
         </div>
       </div>
     </div>
@@ -81,11 +81,11 @@ function ScoreBadge({ score, size = 'lg' }: { score: number; size?: 'sm' | 'lg' 
 
 function MaskBreakdownPanel({ breakdown }: { breakdown: MaskScoreBreakdown[] }) {
   return (
-    <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 space-y-3">
-      <h3 className="text-white font-semibold flex items-center gap-2">
-        <Layers size={16} className="text-teal-400" />
+    <div className="bg-surface border border-white/8 rounded-2xl p-4 space-y-3">
+      <h3 className="text-font font-semibold flex items-center gap-2">
+        <Layers size={16} className="text-theme" />
         Mask-by-Mask Breakdown
-        <span className="ml-auto text-xs text-slate-500 font-normal">{breakdown.length} masks</span>
+        <span className="ml-auto text-xs text-font/35 font-normal">{breakdown.length} masks</span>
       </h3>
 
       <div className="space-y-2">
@@ -105,14 +105,14 @@ function MaskBreakdownPanel({ breakdown }: { breakdown: MaskScoreBreakdown[] }) 
             XCircle;
 
           return (
-            <div key={item.maskIndex} className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-3 space-y-2">
+            <div key={item.maskIndex} className="bg-black/20 border border-white/8 rounded-xl p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="shrink-0 w-5 h-5 rounded bg-slate-700 text-slate-300 text-xs font-bold flex items-center justify-center">
+                  <span className="shrink-0 w-5 h-5 rounded bg-white/10 text-font/60 text-xs font-bold flex items-center justify-center">
                     {item.maskIndex + 1}
                   </span>
-                  <span className="text-slate-300 text-sm font-medium truncate">{item.maskLabel}</span>
-                  <span className="shrink-0 text-xs text-teal-400">p{item.page}</span>
+                  <span className="text-font/70 text-sm font-medium truncate">{item.maskLabel}</span>
+                  <span className="shrink-0 text-xs text-theme">p{item.page}</span>
                 </div>
                 <div className={`flex items-center gap-1.5 shrink-0 ${textColor}`}>
                   <Icon size={13} />
@@ -120,7 +120,7 @@ function MaskBreakdownPanel({ breakdown }: { breakdown: MaskScoreBreakdown[] }) 
                 </div>
               </div>
 
-              <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+              <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-700 ${barColor}`}
                   style={{ width: `${clamp}%` }}
@@ -131,9 +131,9 @@ function MaskBreakdownPanel({ breakdown }: { breakdown: MaskScoreBreakdown[] }) 
         })}
       </div>
 
-      <div className="border-t border-slate-700 pt-2 flex items-center justify-between text-xs">
-        <span className="text-slate-500">Average score</span>
-        <span className="text-slate-300 font-mono">
+      <div className="border-t border-white/8 pt-2 flex items-center justify-between text-xs">
+        <span className="text-font/35">Average score</span>
+        <span className="text-font/60 font-mono">
           ({breakdown.map(b => b.score.toFixed(1)).join(' + ')}) ÷ {breakdown.length}
         </span>
       </div>
@@ -150,10 +150,10 @@ export default function ResultsPanel({ result, job }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6">
+      <div className="bg-surface border border-white/8 rounded-2xl p-6">
         <ScoreBadge score={result.confidenceScore} size="lg" />
         {hasBreakdown && (
-          <p className="text-slate-500 text-xs mt-3">
+          <p className="text-font/35 text-xs mt-3">
             Averaged from {result.maskBreakdown!.length} mask scores — see breakdown below
           </p>
         )}
@@ -162,33 +162,33 @@ export default function ResultsPanel({ result, job }: Props) {
       {hasBreakdown && <MaskBreakdownPanel breakdown={result.maskBreakdown!} />}
 
       {job && (
-        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 space-y-3">
-          <h3 className="text-white font-semibold flex items-center gap-2">
-            <BarChart2 size={16} className="text-teal-400" />
+        <div className="bg-surface border border-white/8 rounded-2xl p-4 space-y-3">
+          <h3 className="text-font font-semibold flex items-center gap-2">
+            <BarChart2 size={16} className="text-theme" />
             Analysis Details
           </h3>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="space-y-2">
               <div>
-                <p className="text-slate-400 text-xs">Document 1</p>
-                <p className="text-white truncate">{job.file1_name}</p>
+                <p className="text-font/40 text-xs">Document 1</p>
+                <p className="text-font truncate">{job.file1_name}</p>
               </div>
               <div>
-                <p className="text-slate-400 text-xs">Document 2</p>
-                <p className="text-white truncate">{job.file2_name}</p>
+                <p className="text-font/40 text-xs">Document 2</p>
+                <p className="text-font truncate">{job.file2_name}</p>
               </div>
             </div>
             <div className="space-y-2">
               <div>
-                <p className="text-slate-400 text-xs">Job ID</p>
-                <p className="text-white font-mono text-xs">{job.id.slice(0, 8)}...</p>
+                <p className="text-font/40 text-xs">Job ID</p>
+                <p className="text-font/70 font-mono text-xs">{job.id.slice(0, 8)}...</p>
               </div>
               <div>
-                <p className="text-slate-400 text-xs flex items-center gap-1">
+                <p className="text-font/40 text-xs flex items-center gap-1">
                   <Clock size={11} />
                   Processed
                 </p>
-                <p className="text-white text-xs">
+                <p className="text-font/70 text-xs">
                   {new Date(job.created_at).toLocaleString()}
                 </p>
               </div>
@@ -199,14 +199,14 @@ export default function ResultsPanel({ result, job }: Props) {
 
       <button
         onClick={handleDownload}
-        className="w-full flex items-center justify-center gap-2 py-3.5 bg-teal-500 hover:bg-teal-400 active:bg-teal-600 text-white font-semibold rounded-xl transition-colors shadow-lg shadow-teal-500/20"
+        className="w-full flex items-center justify-center gap-2 py-3.5 bg-theme hover:opacity-90 active:opacity-80 text-white font-semibold rounded-xl transition-opacity shadow-lg shadow-theme/20"
       >
         <FileText size={18} />
         Download Comparison PDF
         <Download size={16} className="ml-1" />
       </button>
 
-      <p className="text-center text-slate-500 text-xs">
+      <p className="text-center text-font/35 text-xs">
         {hasBreakdown
           ? `PDF includes per-mask breakdown with all ${result.maskBreakdown!.length} signature comparisons`
           : 'PDF contains side-by-side signature comparison with full analysis metrics'}

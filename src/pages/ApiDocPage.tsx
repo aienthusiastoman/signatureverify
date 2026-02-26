@@ -330,7 +330,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={copy}
-      className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-semibold transition-colors text-slate-300"
+      className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-semibold transition-colors text-font/70"
     >
       {copied ? <><CheckCircle size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
     </button>
@@ -344,32 +344,32 @@ export default function ApiDocPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-teal-500/15 border border-teal-500/30 rounded-xl flex items-center justify-center">
-          <BookOpen size={18} className="text-teal-400" />
+        <div className="w-10 h-10 bg-theme/15 border border-theme/30 rounded-xl flex items-center justify-center">
+          <BookOpen size={18} className="text-theme" />
         </div>
         <div>
-          <h1 className="text-white text-xl font-black">API Documentation</h1>
-          <p className="text-slate-400 text-sm font-light">Complete reference for the SignatureVerify REST API</p>
+          <h1 className="text-font text-xl font-black">API Documentation</h1>
+          <p className="text-font/50 text-sm font-light">Complete reference for the SignatureVerify REST API</p>
         </div>
       </div>
 
-      <div className="bg-slate-900/60 border border-teal-500/20 rounded-2xl p-4 flex items-start gap-3">
-        <Terminal size={16} className="text-teal-400 shrink-0 mt-0.5" />
+      <div className="bg-theme/8 border border-theme/20 rounded-2xl p-4 flex items-start gap-3">
+        <Terminal size={16} className="text-theme shrink-0 mt-0.5" />
         <div>
-          <p className="text-teal-300 font-semibold text-sm">Base URL</p>
-          <code className="text-slate-300 text-sm font-mono">{ENDPOINT}</code>
+          <p className="text-theme font-semibold text-sm">Base URL</p>
+          <code className="text-font/70 text-sm font-mono">{ENDPOINT}</code>
         </div>
       </div>
 
-      <div className="flex items-center gap-1 bg-slate-900/60 border border-slate-700/50 rounded-xl p-1 w-fit">
+      <div className="flex items-center gap-1 bg-surface border border-white/8 rounded-xl p-1 w-fit">
         {(Object.keys(LANG_LABELS) as Language[]).map(l => (
           <button
             key={l}
             onClick={() => setLang(l)}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
               lang === l
-                ? 'bg-teal-500 text-white shadow-lg shadow-teal-500/20'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-theme text-white shadow-lg'
+                : 'text-font/50 hover:text-font'
             }`}
           >
             {LANG_LABELS[l]}
@@ -385,21 +385,21 @@ export default function ApiDocPage() {
             : section.content || '';
 
           return (
-            <div key={section.id} className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
+            <div key={section.id} className="bg-surface border border-white/8 rounded-2xl overflow-hidden">
               <button
                 onClick={() => setOpenSection(isOpen ? null : section.id)}
-                className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/3 transition-colors text-left"
+                className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/[0.03] transition-colors text-left"
               >
                 <div className="flex items-center gap-3">
-                  <Code size={15} className="text-teal-400 shrink-0" />
+                  <Code size={15} className="text-theme shrink-0" />
                   <div>
-                    <p className="text-white font-bold text-sm">{section.title}</p>
-                    <p className="text-slate-500 text-xs font-light mt-0.5">{section.description}</p>
+                    <p className="text-font font-bold text-sm">{section.title}</p>
+                    <p className="text-font/40 text-xs font-light mt-0.5">{section.description}</p>
                   </div>
                 </div>
                 {isOpen
-                  ? <ChevronUp size={15} className="text-slate-400 shrink-0" />
-                  : <ChevronDown size={15} className="text-slate-400 shrink-0" />}
+                  ? <ChevronUp size={15} className="text-font/40 shrink-0" />
+                  : <ChevronDown size={15} className="text-font/40 shrink-0" />}
               </button>
 
               {isOpen && (
@@ -408,7 +408,7 @@ export default function ApiDocPage() {
                     <div className="absolute top-3 right-3 z-10">
                       <CopyButton text={code} />
                     </div>
-                    <pre className="bg-slate-950 border border-slate-700/50 rounded-xl p-4 pt-5 text-slate-300 text-xs font-mono leading-relaxed whitespace-pre-wrap overflow-x-auto">
+                    <pre className="bg-black/30 border border-white/8 rounded-xl p-4 pt-5 text-font/70 text-xs font-mono leading-relaxed whitespace-pre-wrap overflow-x-auto">
                       {code}
                     </pre>
                   </div>

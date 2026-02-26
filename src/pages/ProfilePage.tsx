@@ -34,13 +34,13 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-6 max-w-xl">
-      <div className="bg-slate-900 border border-slate-700/60 rounded-2xl p-6 flex items-center gap-5">
-        <div className="w-16 h-16 bg-teal-500/20 border border-teal-500/30 rounded-2xl flex items-center justify-center text-teal-400 text-xl font-black shrink-0">
+      <div className="bg-surface border border-white/8 rounded-2xl p-6 flex items-center gap-5">
+        <div className="w-16 h-16 bg-theme/20 border border-theme/30 rounded-2xl flex items-center justify-center text-theme text-xl font-black shrink-0">
           {initials}
         </div>
         <div className="min-w-0">
-          <h2 className="text-white text-xl font-black truncate">{displayName}</h2>
-          <p className="text-slate-400 text-sm mt-0.5 truncate">{user?.email}</p>
+          <h2 className="text-font text-xl font-black truncate">{displayName}</h2>
+          <p className="text-font/50 text-sm mt-0.5 truncate">{user?.email}</p>
           <div className="flex items-center gap-3 mt-2 flex-wrap">
             <div className="flex items-center gap-1.5">
               <div className="w-2 h-2 bg-emerald-400 rounded-full" />
@@ -56,10 +56,10 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      <div className="bg-slate-900 border border-slate-700/60 rounded-2xl p-6 space-y-5">
+      <div className="bg-surface border border-white/8 rounded-2xl p-6 space-y-5">
         <div className="flex items-center gap-2">
-          <Lock size={17} className="text-teal-400" />
-          <h2 className="text-white font-bold">Change Password</h2>
+          <Lock size={17} className="text-theme" />
+          <h2 className="text-font font-bold">Change Password</h2>
         </div>
 
         <form onSubmit={handlePasswordChange} className="space-y-4">
@@ -69,7 +69,7 @@ export default function ProfilePage() {
             { label: 'Confirm New Password', value: confirmPw, set: setConfirmPw, show: showConfirm, toggle: () => setShowConfirm(p => !p) },
           ] as const).map(({ label, value, set, show, toggle, placeholder }: { label: string; value: string; set: (v: string) => void; show: boolean; toggle: () => void; placeholder?: string }) => (
             <div key={label} className="space-y-1.5">
-              <label className="text-slate-300 text-sm font-semibold">{label}</label>
+              <label className="text-font/70 text-sm font-semibold">{label}</label>
               <div className="relative">
                 <input
                   type={show ? 'text' : 'password'}
@@ -77,9 +77,9 @@ export default function ProfilePage() {
                   onChange={e => set(e.target.value)}
                   placeholder={placeholder || '••••••••'}
                   required
-                  className="w-full bg-slate-800 border border-slate-600 focus:border-teal-500 text-white rounded-xl px-4 py-3 pr-11 text-sm outline-none transition-colors placeholder:text-slate-500"
+                  className="w-full bg-black/20 border border-white/10 focus:border-theme/60 text-font rounded-xl px-4 py-3 pr-11 text-sm outline-none transition-colors placeholder:text-font/25"
                 />
-                <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors">
+                <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-font/40 hover:text-font/70 transition-colors">
                   {show ? <EyeOff size={17} /> : <Eye size={17} />}
                 </button>
               </div>
@@ -100,34 +100,34 @@ export default function ProfilePage() {
           <button
             type="submit"
             disabled={loading || !currentPw || !newPw || !confirmPw}
-            className="w-full py-3 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors shadow-lg shadow-teal-500/20"
+            className="w-full py-3 bg-theme hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-opacity shadow-lg"
           >
             {loading ? 'Updating...' : 'Update Password'}
           </button>
         </form>
       </div>
 
-      <div className="bg-slate-900 border border-slate-700/60 rounded-2xl p-6 space-y-3">
+      <div className="bg-surface border border-white/8 rounded-2xl p-6 space-y-3">
         <div className="flex items-center gap-2 mb-1">
-          <User size={17} className="text-teal-400" />
-          <h2 className="text-white font-bold">Account Details</h2>
+          <User size={17} className="text-theme" />
+          <h2 className="text-font font-bold">Account Details</h2>
         </div>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <p className="text-slate-500 text-xs mb-0.5">User ID</p>
-            <p className="text-slate-300 font-mono text-xs">{user?.id?.slice(0, 16)}...</p>
+            <p className="text-font/35 text-xs mb-0.5">User ID</p>
+            <p className="text-font/70 font-mono text-xs">{user?.id?.slice(0, 16)}...</p>
           </div>
           <div>
-            <p className="text-slate-500 text-xs mb-0.5">Email</p>
-            <p className="text-slate-300 text-xs truncate">{user?.email}</p>
+            <p className="text-font/35 text-xs mb-0.5">Email</p>
+            <p className="text-font/70 text-xs truncate">{user?.email}</p>
           </div>
           <div>
-            <p className="text-slate-500 text-xs mb-0.5">Account Created</p>
-            <p className="text-slate-300 text-xs">{user?.created_at ? new Date(user.created_at).toLocaleDateString() : '—'}</p>
+            <p className="text-font/35 text-xs mb-0.5">Account Created</p>
+            <p className="text-font/70 text-xs">{user?.created_at ? new Date(user.created_at).toLocaleDateString() : '—'}</p>
           </div>
           <div>
-            <p className="text-slate-500 text-xs mb-0.5">Last Sign In</p>
-            <p className="text-slate-300 text-xs">{user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : '—'}</p>
+            <p className="text-font/35 text-xs mb-0.5">Last Sign In</p>
+            <p className="text-font/70 text-xs">{user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : '—'}</p>
           </div>
         </div>
       </div>
