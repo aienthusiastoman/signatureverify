@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FlaskConical, Play, Copy, CheckCircle, Loader2, Upload, X, ChevronDown, LayoutTemplate } from 'lucide-react';
+import { FlaskConical, Play, Copy, CheckCircle, Loader2, Upload, X, ChevronDown, LayoutTemplate, Layers } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { renderPdfPageToCanvas, canvasToBlob, findPageByAnchorText, findPageBySignatureBlob } from '../lib/imageUtils';
-import type { SavedTemplate, MaskRect } from '../types';
+import { renderPdfPageToCanvas, canvasToBlob, findPageByAnchorText, findPageBySignatureBlob, extractRegion, extractCompositeRegion } from '../lib/imageUtils';
+import type { SavedTemplate, MaskRect, MaskDefinition } from '../types';
 
 type Language = 'curl' | 'javascript' | 'python' | 'php' | 'go';
 type CompareMode = 'lenient' | 'strict' | 'super_lenient';
@@ -227,7 +227,7 @@ export default function ApiTestPage() {
     if (!user) return;
     const { data } = await supabase
       .from('templates')
-      .select('id, name, mask1, mask2, created_at')
+      .select('id, name, mask1, mask2, masks2, created_at')
       .order('created_at', { ascending: false });
     setTemplates((data as SavedTemplate[]) ?? []);
   }, [user]);
@@ -287,13 +287,90 @@ export default function ApiTestPage() {
     return defaultPage;
   };
 
+  const renderFilePageCanvas = async (file: File, page: number): Promise<HTMLCanvasElement> => {
+    if (file.type === 'application/pdf') return renderPdfPageToCanvas(file, page);
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement('canvas');
+      const img = new Image();
+      img.onload = () => {
+        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+        canvas.getContext('2d')!.drawImage(img, 0, 0);
+        resolve(canvas);
+      };
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  const resolveMaskDefPage = async (file: File, maskDef: MaskDefinition): Promise<number> => {
+    if (file.type !== 'application/pdf') return maskDef.page ?? 1;
+    const firstRegion = maskDef.regions[0];
+    if (firstRegion && firstRegion.width > 5) {
+      const refCanvas = await renderPdfPageToCanvas(file, maskDef.page ?? 1);
+      const rw = refCanvas.width, rh = refCanvas.height;
+      if (rw > 0 && rh > 0) {
+        const frac = { x: firstRegion.x / rw, y: firstRegion.y / rh, w: firstRegion.width / rw, h: firstRegion.height / rh };
+        return findPageBySignatureBlob(file, frac);
+      }
+    }
+    if (maskDef.anchorText?.trim()) {
+      const pseudoMask: MaskRect = firstRegion
+        ? { x: firstRegion.x, y: firstRegion.y, width: firstRegion.width, height: firstRegion.height, page: maskDef.page }
+        : { x: 0, y: 0, width: 0, height: 0, page: maskDef.page };
+      const found = await findPageByAnchorText(file, maskDef.anchorText, pseudoMask);
+      if (found !== null) return found;
+    }
+    return maskDef.page ?? 1;
+  };
+
   const handleRun = async () => {
     if (!file1 || !file2) return;
     setLoading(true);
     setResponse(null);
 
     try {
-      const { data: { session: freshSession } } = await supabase.auth.getSession();
+      const isMultiMaskTemplate = useTemplate && selectedTemplate?.masks2 && selectedTemplate.masks2.length > 1;
+
+      if (isMultiMaskTemplate && selectedTemplate?.masks2) {
+        const masks2 = selectedTemplate.masks2;
+
+        const page1 = await resolvePageForFile(file1, activeMask1, false);
+        const c1 = await renderFilePageCanvas(file1, page1);
+        const mask1Rect: MaskRect = { x: +activeMask1.x, y: +activeMask1.y, width: +activeMask1.width, height: +activeMask1.height, page: page1 };
+        const crop1Canvas = extractRegion(c1, mask1Rect);
+        const sig1Blob = await canvasToBlob(crop1Canvas);
+
+        const formData = new FormData();
+        formData.append('signature1', sig1Blob, 'sig1.png');
+        formData.append('file1_name', file1.name);
+        formData.append('file2_name', file2.name);
+        formData.append('mask1', JSON.stringify(mask1Rect));
+        formData.append('matched_page1', String(page1));
+        formData.append('mode', compareMode);
+        formData.append('multi_mask_mode', 'true');
+
+        for (let i = 0; i < masks2.length; i++) {
+          const maskDef = masks2[i];
+          const resolvedPage = await resolveMaskDefPage(file2, maskDef);
+          const c2 = await renderFilePageCanvas(file2, resolvedPage);
+          const cropCanvas = extractCompositeRegion(c2, maskDef.regions.length > 0 ? maskDef.regions : [{ x: 0, y: 0, width: c2.width, height: c2.height }]);
+          const sigBlob = await canvasToBlob(cropCanvas);
+          formData.append(`signature2_${i}`, sigBlob, `sig2_${i}.png`);
+          formData.append(`mask2_${i}_label`, maskDef.label);
+          formData.append(`mask2_${i}_page`, String(resolvedPage));
+        }
+        formData.append('mask2_count', String(masks2.length));
+
+        const res = await fetch(ENDPOINT, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+          body: formData,
+        });
+        const data = await res.json();
+        setResponseOk(res.ok);
+        setResponse(JSON.stringify(data, null, 2));
+        return;
+      }
 
       const [page1, page2] = await Promise.all([
         resolvePageForFile(file1, activeMask1, false),
@@ -321,7 +398,7 @@ export default function ApiTestPage() {
       const res = await fetch(ENDPOINT, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${freshSession?.access_token ?? ''}`,
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
@@ -452,27 +529,39 @@ export default function ApiTestPage() {
                       </div>
 
                       {selectedTemplate && (
-                        <div className="grid grid-cols-2 gap-3 text-xs font-mono bg-slate-800/50 rounded-xl px-4 py-3 border border-slate-700/40">
+                        <div className="text-xs font-mono bg-slate-800/50 rounded-xl px-4 py-3 border border-slate-700/40 space-y-3">
                           <div>
-                            <p className="text-slate-500 mb-1">Region 1</p>
-                            <p className="text-slate-300">x:{selectedTemplate.mask1.x} y:{selectedTemplate.mask1.y}</p>
-                            <p className="text-slate-300">{selectedTemplate.mask1.width}×{selectedTemplate.mask1.height} p{selectedTemplate.mask1.page ?? 1}</p>
+                            <p className="text-slate-500 mb-1">Doc 1 — Region</p>
+                            <p className="text-slate-300">x:{selectedTemplate.mask1.x} y:{selectedTemplate.mask1.y} {selectedTemplate.mask1.width}×{selectedTemplate.mask1.height} p{selectedTemplate.mask1.page ?? 1}</p>
                             {selectedTemplate.mask1.anchorText && (
-                              <p className="text-teal-400 mt-1 truncate" title={selectedTemplate.mask1.anchorText}>
-                                anchor: {selectedTemplate.mask1.anchorText}
-                              </p>
+                              <p className="text-teal-400 mt-0.5 truncate" title={selectedTemplate.mask1.anchorText}>anchor: {selectedTemplate.mask1.anchorText}</p>
                             )}
                           </div>
-                          <div>
-                            <p className="text-slate-500 mb-1">Region 2</p>
-                            <p className="text-slate-300">x:{selectedTemplate.mask2.x} y:{selectedTemplate.mask2.y}</p>
-                            <p className="text-slate-300">{selectedTemplate.mask2.width}×{selectedTemplate.mask2.height} p{selectedTemplate.mask2.page ?? 1}</p>
-                            {selectedTemplate.mask2.anchorText && (
-                              <p className="text-teal-400 mt-1 truncate" title={selectedTemplate.mask2.anchorText}>
-                                anchor: {selectedTemplate.mask2.anchorText}
-                              </p>
-                            )}
-                          </div>
+                          {selectedTemplate.masks2 && selectedTemplate.masks2.length > 0 ? (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-1.5 text-slate-500">
+                                <Layers size={10} />
+                                <span>Doc 2 — {selectedTemplate.masks2.length} mask{selectedTemplate.masks2.length > 1 ? 's' : ''}</span>
+                              </div>
+                              {selectedTemplate.masks2.map((m) => (
+                                <div key={m.id} className="pl-2 border-l border-slate-700">
+                                  <p className="text-amber-400">{m.label} — p{m.page ?? 1}</p>
+                                  {m.regions.map((r, ri) => (
+                                    <p key={ri} className="text-slate-400">x:{r.x} y:{r.y} {r.width}×{r.height}</p>
+                                  ))}
+                                  {m.autoDetect && <p className="text-teal-400">auto-detect</p>}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div>
+                              <p className="text-slate-500 mb-1">Doc 2 — Region</p>
+                              <p className="text-slate-300">x:{selectedTemplate.mask2.x} y:{selectedTemplate.mask2.y} {selectedTemplate.mask2.width}×{selectedTemplate.mask2.height} p{selectedTemplate.mask2.page ?? 1}</p>
+                              {selectedTemplate.mask2.anchorText && (
+                                <p className="text-teal-400 mt-0.5 truncate" title={selectedTemplate.mask2.anchorText}>anchor: {selectedTemplate.mask2.anchorText}</p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </>
