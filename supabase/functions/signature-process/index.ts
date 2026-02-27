@@ -1144,7 +1144,9 @@ async function resolveImageBuffers(formData: FormData): Promise<{
       if (regionWeightsRaw) {
         try { regionWeights = JSON.parse(regionWeightsRaw); } catch { regionWeights = undefined; }
       }
-      multiMaskBufs.push({ buf: abuf, label, page, weight, regionWeights, regionCount: regionWeights?.length ?? 1 });
+      const regionCountRaw = formData.get(`mask2_${i}_region_count`) as string | null;
+      const regionCount = regionCountRaw ? parseInt(regionCountRaw) : (regionWeights?.length ?? 1);
+      multiMaskBufs.push({ buf: abuf, label, page, weight, regionWeights, regionCount });
     }
   }
 

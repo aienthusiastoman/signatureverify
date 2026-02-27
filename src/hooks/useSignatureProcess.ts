@@ -135,6 +135,7 @@ export function useSignatureProcess() {
         if (mr.maskDef.weight !== undefined) {
           formData.append(`mask2_${idx}_weight`, String(mr.maskDef.weight));
         }
+        formData.append(`mask2_${idx}_region_count`, String(mr.maskDef.regions.length));
         if (mr.maskDef.regionWeights && mr.maskDef.regionWeights.length > 0) {
           formData.append(`mask2_${idx}_region_weights`, JSON.stringify(mr.maskDef.regionWeights));
         }
