@@ -1090,7 +1090,7 @@ async function resolveImageBuffers(formData: FormData): Promise<{
   matchedPage2: number | undefined;
   mode: 'lenient' | 'strict' | 'super_lenient';
   isMultiMask: boolean;
-  multiMaskBufs: { buf: ArrayBuffer; label: string; page: number; weight?: number; regionWeights?: number[] }[];
+  multiMaskBufs: { buf: ArrayBuffer; label: string; page: number; weight?: number; regionWeights?: number[]; regionCount: number }[];
 }> {
   const file1Name = (formData.get("file1_name") as string) || "document1";
   const file2Name = (formData.get("file2_name") as string) || "document2";
@@ -1144,7 +1144,7 @@ async function resolveImageBuffers(formData: FormData): Promise<{
       if (regionWeightsRaw) {
         try { regionWeights = JSON.parse(regionWeightsRaw); } catch { regionWeights = undefined; }
       }
-      multiMaskBufs.push({ buf: abuf, label, page, weight, regionWeights });
+      multiMaskBufs.push({ buf: abuf, label, page, weight, regionWeights, regionCount: regionWeights?.length ?? 1 });
     }
   }
 
@@ -1234,7 +1234,7 @@ Deno.serve(async (req: Request) => {
     let matchedPage2: number | undefined;
     let mode: 'lenient' | 'strict' | 'super_lenient' = 'lenient';
     let isMultiMask = false;
-    let multiMaskBufs: { buf: ArrayBuffer; label: string; page: number }[] = [];
+    let multiMaskBufs: { buf: ArrayBuffer; label: string; page: number; weight?: number; regionWeights?: number[]; regionCount: number }[] = [];
 
     if (contentType.includes("application/json")) {
       const body = await req.json() as Record<string, unknown>;
@@ -1323,22 +1323,27 @@ Deno.serve(async (req: Request) => {
 
         const verifyRaw = await Jimp.read(Buffer.from(item.buf));
         verifyRaw.grayscale();
-        const verifyBlobs = extractAllSignatureBlobs(verifyRaw);
 
-        if (refNorm && verifyBlobs.length > 1) {
-          const rawScores = verifyBlobs.map(vb => computeScoreFastNorm(refNorm, vb, mode));
-          subScores = rawScores.map(sc => Math.round(sc * 10) / 10);
-          if (item.regionWeights && item.regionWeights.length > 0) {
-            const rw = rawScores.map((_, ri) => (item.regionWeights![ri] ?? 1));
-            const totalRW = rw.reduce((a, b) => a + b, 0) || 1;
-            s = rawScores.reduce((sum, sc, ri) => sum + sc * rw[ri], 0) / totalRW;
-          } else {
-            s = rawScores.reduce((a, b) => a + b, 0) / rawScores.length;
+        if (item.regionCount > 1) {
+          const verifyBlobs = extractAllSignatureBlobs(verifyRaw);
+          if (refNorm && verifyBlobs.length > 1) {
+            const rawScores = verifyBlobs.map(vb => computeScoreFastNorm(refNorm, vb, mode));
+            subScores = rawScores.map(sc => Math.round(sc * 10) / 10);
+            if (item.regionWeights && item.regionWeights.length > 0) {
+              const rw = rawScores.map((_, ri) => (item.regionWeights![ri] ?? 1));
+              const totalRW = rw.reduce((a, b) => a + b, 0) || 1;
+              s = rawScores.reduce((sum, sc, ri) => sum + sc * rw[ri], 0) / totalRW;
+            } else {
+              s = rawScores.reduce((a, b) => a + b, 0) / rawScores.length;
+            }
+          } else if (refBlob && verifyBlobs.length === 1) {
+            s = computeScore(refBlob, verifyBlobs[0], mode);
           }
-        } else if (refBlob && verifyBlobs.length === 1) {
-          s = computeScore(refBlob, verifyBlobs[0], mode);
-        } else if (refNorm && verifyBlobs.length === 0) {
-          s = 0;
+        } else {
+          const verifyBlob = extractSignatureBlob(verifyRaw);
+          if (refBlob && verifyBlob) {
+            s = computeScore(refBlob, verifyBlob, mode);
+          }
         }
 
         scores.push(s);
