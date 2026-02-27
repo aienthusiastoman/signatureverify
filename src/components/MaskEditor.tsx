@@ -27,6 +27,8 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
   const [selectedPage, setSelectedPage] = useState(mask?.page ?? 1);
   const [thumbnails, setThumbnails] = useState<Record<number, string>>({});
   const [thumbsLoading, setThumbsLoading] = useState(false);
+  const [anchorSearchFailed, setAnchorSearchFailed] = useState(false);
+  const [anchorSearching, setAnchorSearching] = useState(false);
 
   const isPdf = file.type === 'pdf';
   const autoDetect = mask?.autoDetect ?? false;
@@ -395,20 +397,41 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
           <input
             type="text"
             value={mask?.anchorText ?? ''}
-            onChange={e => onMaskChange({ ...(mask ?? { x: 0, y: 0, width: 0, height: 0 }), anchorText: e.target.value, anchorRelativeOffset: undefined })}
+            onChange={e => {
+              setAnchorSearchFailed(false);
+              onMaskChange({ ...(mask ?? { x: 0, y: 0, width: 0, height: 0 }), anchorText: e.target.value, anchorRelativeOffset: undefined });
+            }}
             onBlur={async e => {
               const text = e.target.value.trim();
               if (!text || !isPdf || !mask || mask.width <= 5) return;
+              setAnchorSearching(true);
+              setAnchorSearchFailed(false);
               const page = mask.page ?? selectedPage;
               const anchorBounds = await findAnchorTextPixelBounds(file.file, page, text).catch(() => null);
+              setAnchorSearching(false);
               if (anchorBounds) {
+                setAnchorSearchFailed(false);
                 onMaskChange({ ...mask, anchorRelativeOffset: { dx: mask.x - anchorBounds.x, dy: mask.y - anchorBounds.y } });
+              } else {
+                setAnchorSearchFailed(true);
               }
             }}
             placeholder="e.g. SIGNATURE, Authorized Signatory (optional)"
             className="w-full bg-surface border border-white/10 focus:border-theme outline-none rounded-lg px-3 py-2 text-font text-sm placeholder:text-font/35 transition-colors"
           />
-          {mask?.anchorText && !mask?.anchorRelativeOffset && (
+          {anchorSearching && (
+            <p className="text-font/50 text-xs flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-font/50 rounded-full animate-pulse" />
+              Searching document text layer...
+            </p>
+          )}
+          {!anchorSearching && anchorSearchFailed && mask?.anchorText && (
+            <p className="text-amber-400 text-xs flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-amber-400 rounded-full shrink-0" />
+              Text &ldquo;{mask.anchorText}&rdquo; not found in the document&rsquo;s text layer. This document may be a scanned image without selectable text. The page fingerprint will still be used for page matching.
+            </p>
+          )}
+          {!anchorSearching && !anchorSearchFailed && mask?.anchorText && !mask?.anchorRelativeOffset && (
             <p className="text-theme text-xs flex items-center gap-1">
               <span className="w-1.5 h-1.5 bg-theme rounded-full" />
               Draw or auto-detect the region to lock the position relative to &ldquo;{mask.anchorText}&rdquo;

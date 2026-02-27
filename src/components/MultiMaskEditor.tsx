@@ -50,6 +50,8 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
   const [drawing, setDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [liveRect, setLiveRect] = useState<MaskRegion | null>(null);
+  const [anchorSearchFailed, setAnchorSearchFailed] = useState(false);
+  const [anchorSearching, setAnchorSearching] = useState(false);
 
   const isPdf = file.type === 'pdf';
   const activeMask = masks[activeMaskIdx] ?? null;
@@ -325,6 +327,7 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
   };
 
   const handleAnchorChange = (val: string) => {
+    setAnchorSearchFailed(false);
     const updated = masks.map((m, idx) => idx !== activeMaskIdx ? m : {
       ...m,
       anchorText: val,
@@ -595,8 +598,15 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
               onBlur={async e => {
                 const text = e.target.value.trim();
                 if (!text || !isPdf || !activeMask || activeMask.regions.length === 0) return;
+                setAnchorSearching(true);
+                setAnchorSearchFailed(false);
                 const anchorBounds = await findAnchorTextPixelBounds(file.file, selectedPage, text).catch(() => null);
-                if (!anchorBounds) return;
+                setAnchorSearching(false);
+                if (!anchorBounds) {
+                  setAnchorSearchFailed(true);
+                  return;
+                }
+                setAnchorSearchFailed(false);
                 const updated = masks.map((m, idx) => idx !== activeMaskIdx ? m : {
                   ...m,
                   regions: m.regions.map(r => ({
@@ -609,7 +619,19 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
               placeholder="e.g. SIGNATURE, Authorized Signatory (optional)"
               className="w-full bg-surface border border-white/10 focus:border-theme outline-none rounded-lg px-3 py-2 text-font text-sm placeholder:text-font/35 transition-colors"
             />
-            {activeMask.anchorText && !activeMask.regions.some(r => r.anchorRelativeOffset) && (
+            {anchorSearching && (
+              <p className="text-font/50 text-xs flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-font/50 rounded-full animate-pulse" />
+                Searching document text layer...
+              </p>
+            )}
+            {!anchorSearching && anchorSearchFailed && activeMask.anchorText && (
+              <p className="text-amber-400 text-xs flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full shrink-0" />
+                Text &ldquo;{activeMask.anchorText}&rdquo; not found in the document&rsquo;s text layer. This document may be a scanned image without selectable text. The page fingerprint will still be used for page matching.
+              </p>
+            )}
+            {!anchorSearching && !anchorSearchFailed && activeMask.anchorText && !activeMask.regions.some(r => r.anchorRelativeOffset) && (
               <p className="text-theme text-xs flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-theme rounded-full" />
                 Draw regions to lock positions relative to &ldquo;{activeMask.anchorText}&rdquo;
