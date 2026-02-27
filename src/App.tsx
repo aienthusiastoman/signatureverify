@@ -25,7 +25,7 @@ import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { useSignatureProcess } from './hooks/useSignatureProcess';
 import {
   extractRegion, extractCompositeRegion, renderPdfPageToCanvas,
-  findPageByAnchorText, findPageBySignatureBlob
+  findPageByAnchorText, findPageBySignatureBlob, findAnchorTextPixelBounds
 } from './lib/imageUtils';
 import { detectSignatureInRegionFiltered } from './lib/signatureDetect';
 import type {
@@ -164,6 +164,42 @@ function CompareToolContent() {
     return { page: maskDef.page ?? 1 };
   };
 
+  const applyAnchorOffsetToMask = async (file: UploadedFile, mask: MaskRect, page: number): Promise<MaskRect> => {
+    if (!mask.anchorText?.trim() || !mask.anchorRelativeOffset || file.type !== 'pdf') return mask;
+    try {
+      const anchorBounds = await findAnchorTextPixelBounds(file.file, page, mask.anchorText);
+      if (!anchorBounds) return mask;
+      return {
+        ...mask,
+        x: Math.round(anchorBounds.x + mask.anchorRelativeOffset.dx),
+        y: Math.round(anchorBounds.y + mask.anchorRelativeOffset.dy),
+      };
+    } catch { return mask; }
+  };
+
+  const applyAnchorOffsetToRegions = async (
+    file: UploadedFile,
+    maskDef: MaskDefinition,
+    page: number
+  ): Promise<{ x: number; y: number; width: number; height: number }[]> => {
+    if (!maskDef.anchorText?.trim() || file.type !== 'pdf') return maskDef.regions;
+    const hasOffsets = maskDef.regions.some(r => r.anchorRelativeOffset);
+    if (!hasOffsets) return maskDef.regions;
+    try {
+      const anchorBounds = await findAnchorTextPixelBounds(file.file, page, maskDef.anchorText);
+      if (!anchorBounds) return maskDef.regions;
+      return maskDef.regions.map(r => {
+        if (!r.anchorRelativeOffset) return r;
+        return {
+          x: Math.round(anchorBounds.x + r.anchorRelativeOffset.dx),
+          y: Math.round(anchorBounds.y + r.anchorRelativeOffset.dy),
+          width: r.width,
+          height: r.height,
+        };
+      });
+    } catch { return maskDef.regions; }
+  };
+
   const handleProceedToPreview = async () => {
     if (!file1 || !file2 || !mask1) return;
     setExtracting(true);
@@ -183,6 +219,8 @@ function CompareToolContent() {
       if (resolvedMask1.autoDetect) {
         const detected = detectSignatureInRegionFiltered(c1, resolvedMask1);
         resolvedMask1 = { ...resolvedMask1, ...detected };
+      } else {
+        resolvedMask1 = await applyAnchorOffsetToMask(file1, resolvedMask1, page1);
       }
 
       const crop1 = extractRegion(c1, resolvedMask1);
@@ -206,6 +244,8 @@ function CompareToolContent() {
           const pseudoMask: MaskRect = { x: 0, y: 0, width: c2.width, height: c2.height, page: resolvedPage, autoDetect: true };
           const detected = detectSignatureInRegionFiltered(c2, pseudoMask);
           effectiveRegions = [{ x: detected.x, y: detected.y, width: detected.width, height: detected.height }];
+        } else {
+          effectiveRegions = await applyAnchorOffsetToRegions(file2, maskDef, resolvedPage);
         }
 
         const crop = extractCompositeRegion(c2, effectiveRegions);

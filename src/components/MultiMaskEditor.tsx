@@ -1,11 +1,11 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, ChevronLeft, ChevronRight, FileText,
-  Wand2, RotateCcw, Move, Scan, ScanText, Square, X, Scale
+  Wand2, RotateCcw, Move, Scan, ScanText, Square, X, Scale, MapPin
 } from 'lucide-react';
 import type { MaskDefinition, MaskRegion, UploadedFile } from '../types';
 import { autoDetectSignature } from '../lib/signatureDetect';
-import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail } from '../lib/imageUtils';
+import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds } from '../lib/imageUtils';
 
 let maskIdCounter = 0;
 function newMaskId() { return `mask-${++maskIdCounter}-${Date.now()}`; }
@@ -227,7 +227,7 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
     });
   };
 
-  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleMouseUp = async (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!drawing || !canvasState) return;
     setDrawing(false);
     setLiveRect(null);
@@ -240,9 +240,22 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
     };
     if (displayRegion.width < 5 || displayRegion.height < 5) return;
     const natural = scaleToNatural(displayRegion, canvasState);
+
+    let anchorRelativeOffset: { dx: number; dy: number } | undefined;
+    const currentMask = masks[activeMaskIdx];
+    if (currentMask?.anchorText?.trim() && isPdf) {
+      try {
+        const anchorBounds = await findAnchorTextPixelBounds(file.file, selectedPage, currentMask.anchorText);
+        if (anchorBounds) {
+          anchorRelativeOffset = { dx: natural.x - anchorBounds.x, dy: natural.y - anchorBounds.y };
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    const naturalWithOffset: MaskRegion = { ...natural, anchorRelativeOffset };
     const updated = masks.map((m, idx) => {
       if (idx !== activeMaskIdx) return m;
-      return { ...m, regions: [...m.regions, natural] };
+      return { ...m, regions: [...m.regions, naturalWithOffset] };
     });
     onMasksChange(updated);
   };
@@ -312,7 +325,11 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
   };
 
   const handleAnchorChange = (val: string) => {
-    const updated = masks.map((m, idx) => idx !== activeMaskIdx ? m : { ...m, anchorText: val });
+    const updated = masks.map((m, idx) => idx !== activeMaskIdx ? m : {
+      ...m,
+      anchorText: val,
+      regions: m.regions.map(r => ({ ...r, anchorRelativeOffset: undefined })),
+    });
     onMasksChange(updated);
   };
 
@@ -569,15 +586,27 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
           <div className="bg-black/20 border border-white/8 rounded-xl p-3 space-y-2">
             <div className="flex items-center gap-2">
               <ScanText size={13} className="text-theme shrink-0" />
-              <p className="text-font/70 text-xs font-semibold">Smart Page Detection</p>
+              <p className="text-font/70 text-xs font-semibold">Smart Page Detection &amp; Anchor Positioning</p>
             </div>
             <input
               type="text"
               value={activeMask.anchorText ?? ''}
               onChange={e => handleAnchorChange(e.target.value)}
-              placeholder="Anchor text fallback (optional)"
+              placeholder="e.g. SIGNATURE, Authorized Signatory (optional)"
               className="w-full bg-surface border border-white/10 focus:border-theme outline-none rounded-lg px-3 py-2 text-font text-sm placeholder:text-font/35 transition-colors"
             />
+            {activeMask.anchorText && !activeMask.regions.some(r => r.anchorRelativeOffset) && (
+              <p className="text-theme text-xs flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-theme rounded-full" />
+                Draw regions to lock positions relative to &ldquo;{activeMask.anchorText}&rdquo;
+              </p>
+            )}
+            {activeMask.anchorText && activeMask.regions.some(r => r.anchorRelativeOffset) && (
+              <p className="text-emerald-400 text-xs flex items-center gap-1">
+                <MapPin size={11} className="shrink-0" />
+                Anchor offset locked for {activeMask.regions.filter(r => r.anchorRelativeOffset).length}/{activeMask.regions.length} region(s) — positions track &ldquo;{activeMask.anchorText}&rdquo;
+              </p>
+            )}
           </div>
 
           <div ref={containerRef} className="relative bg-surface rounded-xl overflow-hidden border border-white/8">

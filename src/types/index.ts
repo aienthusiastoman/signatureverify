@@ -8,6 +8,7 @@ export interface MaskRect {
   pageThumbnail?: string;
   pageThumbnailMaskFrac?: { x: number; y: number; w: number; h: number };
   autoDetect?: boolean;
+  anchorRelativeOffset?: { dx: number; dy: number };
 }
 
 export interface MaskRegion {
@@ -15,6 +16,7 @@ export interface MaskRegion {
   y: number;
   width: number;
   height: number;
+  anchorRelativeOffset?: { dx: number; dy: number };
 }
 
 export interface MaskDefinition {

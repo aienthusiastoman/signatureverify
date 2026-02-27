@@ -468,6 +468,63 @@ export async function findPageByAnchorText(
   return pickBestByInk(matchingPages);
 }
 
+export async function findAnchorTextPixelBounds(
+  file: File,
+  pageNum: number,
+  anchorText: string
+): Promise<{ x: number; y: number; width: number; height: number } | null> {
+  const pdfjsLib = getPdfjsLib();
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdf.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 2.0 });
+  const textContent = await page.getTextContent();
+
+  const search = anchorText.toLowerCase().trim();
+  const items = (textContent.items as any[]).filter(
+    (item: any) => typeof item.str === 'string' && item.str.trim()
+  );
+
+  const toViewport = (x: number, y: number): [number, number] => {
+    const t = viewport.transform as number[];
+    return [t[0] * x + t[2] * y + t[4], t[1] * x + t[3] * y + t[5]];
+  };
+
+  const itemBounds = (item: any): { x: number; y: number; width: number; height: number } => {
+    const [px, py] = toViewport(item.transform[4], item.transform[5]);
+    const w = Math.max(4, (item.width ?? 10) * viewport.scale);
+    const h = Math.max(4, (item.height ?? 10) * viewport.scale);
+    return { x: px, y: py - h, width: w, height: h };
+  };
+
+  for (const item of items) {
+    const itemText = item.str.toLowerCase().trim();
+    if (itemText.length > 1 && (itemText.includes(search) || search.includes(itemText))) {
+      return itemBounds(item);
+    }
+  }
+
+  for (let start = 0; start < items.length; start++) {
+    let combined = '';
+    for (let end = start; end < Math.min(start + 8, items.length); end++) {
+      combined += items[end].str.toLowerCase();
+      if (combined.replace(/\s+/g, ' ').trim().includes(search)) {
+        const s = itemBounds(items[start]);
+        const e2 = itemBounds(items[end]);
+        return {
+          x: Math.min(s.x, e2.x),
+          y: Math.min(s.y, e2.y),
+          width: Math.max(s.x + s.width, e2.x + e2.width) - Math.min(s.x, e2.x),
+          height: Math.max(s.height, e2.height),
+        };
+      }
+      if (combined.length > search.length * 4) break;
+    }
+  }
+
+  return null;
+}
+
 export async function fileToCanvas(file: File): Promise<HTMLCanvasElement> {
   return new Promise((resolve, reject) => {
     if (file.type === 'application/pdf') {

@@ -1,8 +1,8 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Wand2, RotateCcw, Move, ChevronLeft, ChevronRight, FileText, ScanText, Scan } from 'lucide-react';
+import { Wand2, RotateCcw, Move, ChevronLeft, ChevronRight, FileText, ScanText, Scan, MapPin } from 'lucide-react';
 import type { MaskRect, UploadedFile } from '../types';
 import { autoDetectSignature } from '../lib/signatureDetect';
-import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail } from '../lib/imageUtils';
+import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds } from '../lib/imageUtils';
 
 interface Props {
   file: UploadedFile;
@@ -191,7 +191,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     h: natural.height / c.height,
   });
 
-  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleMouseUp = async (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!drawing || autoDetect) return;
     setDrawing(false);
     const pos = getRelPos(e);
@@ -201,17 +201,39 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
       const c = canvasRef.current;
       const frac = c ? makeFrac(natural, c) : undefined;
       const thumb = c ? captureStructuralThumbnail(c, natural) : undefined;
-      onMaskChange({ ...natural, anchorText: mask?.anchorText, pageThumbnail: thumb, pageThumbnailMaskFrac: frac, autoDetect: false });
+
+      let anchorRelativeOffset: { dx: number; dy: number } | undefined;
+      if (mask?.anchorText?.trim() && isPdf) {
+        try {
+          const anchorBounds = await findAnchorTextPixelBounds(file.file, selectedPage, mask.anchorText);
+          if (anchorBounds) {
+            anchorRelativeOffset = { dx: natural.x - anchorBounds.x, dy: natural.y - anchorBounds.y };
+          }
+        } catch { /* non-fatal */ }
+      }
+
+      onMaskChange({ ...natural, anchorText: mask?.anchorText, pageThumbnail: thumb, pageThumbnailMaskFrac: frac, autoDetect: false, anchorRelativeOffset });
     }
   };
 
-  const handleAutoDetect = () => {
+  const handleAutoDetect = async () => {
     const c = canvasRef.current;
     if (!c) return;
     const detected = autoDetectSignature(c);
     const frac = makeFrac(detected, c);
     const thumb = captureStructuralThumbnail(c, detected);
-    onMaskChange({ ...detected, page: selectedPage, anchorText: mask?.anchorText, pageThumbnail: thumb, pageThumbnailMaskFrac: frac, autoDetect: false });
+
+    let anchorRelativeOffset: { dx: number; dy: number } | undefined;
+    if (mask?.anchorText?.trim() && isPdf) {
+      try {
+        const anchorBounds = await findAnchorTextPixelBounds(file.file, selectedPage, mask.anchorText);
+        if (anchorBounds) {
+          anchorRelativeOffset = { dx: detected.x - anchorBounds.x, dy: detected.y - anchorBounds.y };
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    onMaskChange({ ...detected, page: selectedPage, anchorText: mask?.anchorText, pageThumbnail: thumb, pageThumbnailMaskFrac: frac, autoDetect: false, anchorRelativeOffset });
   };
 
   const handleToggleAutoDetect = () => {
@@ -373,14 +395,20 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
           <input
             type="text"
             value={mask?.anchorText ?? ''}
-            onChange={e => onMaskChange({ ...(mask ?? { x: 0, y: 0, width: 0, height: 0 }), anchorText: e.target.value })}
-            placeholder="e.g. Authorized Signatory (optional)"
+            onChange={e => onMaskChange({ ...(mask ?? { x: 0, y: 0, width: 0, height: 0 }), anchorText: e.target.value, anchorRelativeOffset: undefined })}
+            placeholder="e.g. SIGNATURE, Authorized Signatory (optional)"
             className="w-full bg-surface border border-white/10 focus:border-theme outline-none rounded-lg px-3 py-2 text-font text-sm placeholder:text-font/35 transition-colors"
           />
-          {mask?.anchorText && (
+          {mask?.anchorText && !mask?.anchorRelativeOffset && (
             <p className="text-theme text-xs flex items-center gap-1">
               <span className="w-1.5 h-1.5 bg-theme rounded-full" />
-              Will also search for &ldquo;{mask.anchorText}&rdquo; as a fallback
+              Draw or auto-detect the region to lock the position relative to &ldquo;{mask.anchorText}&rdquo;
+            </p>
+          )}
+          {mask?.anchorRelativeOffset && (
+            <p className="text-emerald-400 text-xs flex items-center gap-1">
+              <MapPin size={11} className="shrink-0" />
+              Anchor offset locked — signature position will track &ldquo;{mask.anchorText}&rdquo; across documents
             </p>
           )}
         </div>
