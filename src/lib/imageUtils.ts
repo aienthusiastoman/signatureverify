@@ -1,4 +1,5 @@
 import type { MaskRect } from '../types';
+import Tesseract from 'tesseract.js';
 
 function getPdfjsLib() {
   const lib = (window as any).pdfjsLib;
@@ -468,7 +469,7 @@ export async function findPageByAnchorText(
   return pickBestByInk(matchingPages);
 }
 
-export async function findAnchorTextPixelBounds(
+async function findAnchorTextPixelBoundsPdfTextLayer(
   file: File,
   pageNum: number,
   anchorText: string
@@ -520,6 +521,65 @@ export async function findAnchorTextPixelBounds(
       }
       if (combined.length > search.length * 4) break;
     }
+  }
+
+  return null;
+}
+
+export async function findAnchorTextPixelBoundsOCR(
+  canvas: HTMLCanvasElement,
+  anchorText: string
+): Promise<{ x: number; y: number; width: number; height: number } | null> {
+  const search = anchorText.toLowerCase().trim();
+  const { data } = await Tesseract.recognize(canvas, 'eng');
+  const words = data.words ?? [];
+
+  for (const word of words) {
+    const text = word.text.toLowerCase().trim();
+    if (text.length > 0 && (text.includes(search) || search.includes(text))) {
+      const b = word.bbox;
+      return { x: b.x0, y: b.y0, width: b.x1 - b.x0, height: b.y1 - b.y0 };
+    }
+  }
+
+  const searchWords = search.split(/\s+/).filter(w => w.length > 0);
+  if (searchWords.length > 1) {
+    for (let i = 0; i < words.length; i++) {
+      let combined = '';
+      let firstBbox = words[i].bbox;
+      let lastBbox = words[i].bbox;
+      for (let j = i; j < Math.min(i + searchWords.length + 2, words.length); j++) {
+        combined += (combined ? ' ' : '') + words[j].text.toLowerCase().trim();
+        lastBbox = words[j].bbox;
+        if (combined.includes(search)) {
+          return {
+            x: Math.min(firstBbox.x0, lastBbox.x0),
+            y: Math.min(firstBbox.y0, lastBbox.y0),
+            width: Math.max(firstBbox.x1, lastBbox.x1) - Math.min(firstBbox.x0, lastBbox.x0),
+            height: Math.max(firstBbox.y1, lastBbox.y1) - Math.min(firstBbox.y0, lastBbox.y0),
+          };
+        }
+        if (combined.length > search.length * 3) break;
+      }
+    }
+  }
+
+  return null;
+}
+
+export async function findAnchorTextPixelBounds(
+  file: File,
+  pageNum: number,
+  anchorText: string,
+  canvas?: HTMLCanvasElement
+): Promise<{ x: number; y: number; width: number; height: number } | null> {
+  if (file.type === 'application/pdf') {
+    const textLayerResult = await findAnchorTextPixelBoundsPdfTextLayer(file, pageNum, anchorText);
+    if (textLayerResult) return textLayerResult;
+  }
+
+  if (canvas) {
+    return findAnchorTextPixelBoundsOCR(canvas, anchorText);
   }
 
   return null;

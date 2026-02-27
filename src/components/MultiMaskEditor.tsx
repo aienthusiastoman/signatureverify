@@ -247,7 +247,7 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
     const currentMask = masks[activeMaskIdx];
     if (currentMask?.anchorText?.trim() && isPdf) {
       try {
-        const anchorBounds = await findAnchorTextPixelBounds(file.file, selectedPage, currentMask.anchorText);
+        const anchorBounds = await findAnchorTextPixelBounds(file.file, selectedPage, currentMask.anchorText, nativeCanvasRef.current ?? undefined);
         if (anchorBounds) {
           anchorRelativeOffset = { dx: natural.x - anchorBounds.x, dy: natural.y - anchorBounds.y };
         }
@@ -597,10 +597,10 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
               onChange={e => handleAnchorChange(e.target.value)}
               onBlur={async e => {
                 const text = e.target.value.trim();
-                if (!text || !isPdf || !activeMask || activeMask.regions.length === 0) return;
+                if (!text || !activeMask || activeMask.regions.length === 0) return;
                 setAnchorSearching(true);
                 setAnchorSearchFailed(false);
-                const anchorBounds = await findAnchorTextPixelBounds(file.file, selectedPage, text).catch(() => null);
+                const anchorBounds = await findAnchorTextPixelBounds(file.file, selectedPage, text, nativeCanvasRef.current ?? undefined).catch(() => null);
                 setAnchorSearching(false);
                 if (!anchorBounds) {
                   setAnchorSearchFailed(true);
@@ -622,13 +622,13 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
             {anchorSearching && (
               <p className="text-font/50 text-xs flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-font/50 rounded-full animate-pulse" />
-                Searching document text layer...
+                Searching document text layer (with OCR fallback)...
               </p>
             )}
             {!anchorSearching && anchorSearchFailed && activeMask.anchorText && (
               <p className="text-amber-400 text-xs flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-amber-400 rounded-full shrink-0" />
-                Text &ldquo;{activeMask.anchorText}&rdquo; not found in the document&rsquo;s text layer. This document may be a scanned image without selectable text. The page fingerprint will still be used for page matching.
+                Text &ldquo;{activeMask.anchorText}&rdquo; not found via text layer or OCR. The page fingerprint will still be used for page matching.
               </p>
             )}
             {!anchorSearching && !anchorSearchFailed && activeMask.anchorText && !activeMask.regions.some(r => r.anchorRelativeOffset) && (
