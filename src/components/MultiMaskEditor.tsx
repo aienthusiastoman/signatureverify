@@ -1,11 +1,12 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, ChevronLeft, ChevronRight, FileText,
-  Wand2, RotateCcw, Move, Scan, ScanText, Square, X, Scale, MapPin
+  Wand2, RotateCcw, Move, Scan, ScanText, Square, X, Scale, MapPin, Crosshair
 } from 'lucide-react';
 import type { MaskDefinition, MaskRegion, UploadedFile } from '../types';
 import { autoDetectSignature } from '../lib/signatureDetect';
 import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds } from '../lib/imageUtils';
+import { captureVisualAnchor } from '../lib/templateMatch';
 
 let maskIdCounter = 0;
 function newMaskId() { return `mask-${++maskIdCounter}-${Date.now()}`; }
@@ -254,10 +255,19 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
       } catch { /* non-fatal */ }
     }
 
-    const naturalWithOffset: MaskRegion = { ...natural, anchorRelativeOffset };
+    const c = nativeCanvasRef.current;
+    const isFirstRegion = currentMask.regions.length === 0;
+    let maskVisualAnchor = currentMask.visualAnchor;
+    if (isFirstRegion && c) {
+      maskVisualAnchor = captureVisualAnchor(c, natural) ?? undefined;
+    }
+
+    const regionVisualAnchor = c ? captureVisualAnchor(c, natural) ?? undefined : undefined;
+
+    const naturalWithOffset: MaskRegion = { ...natural, anchorRelativeOffset, visualAnchor: regionVisualAnchor };
     const updated = masks.map((m, idx) => {
       if (idx !== activeMaskIdx) return m;
-      return { ...m, regions: [...m.regions, naturalWithOffset] };
+      return { ...m, regions: [...m.regions, naturalWithOffset], visualAnchor: maskVisualAnchor };
     });
     onMasksChange(updated);
   };
@@ -644,6 +654,23 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
               </p>
             )}
           </div>
+
+          {activeMask.visualAnchor && !activeMask.autoDetect && (
+            <div className="flex items-start gap-2 text-xs bg-teal-500/10 border border-teal-500/20 rounded-lg px-3 py-2.5 text-teal-300">
+              <Crosshair size={13} className="shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <span className="font-semibold">Visual anchor captured</span>
+                <span className="text-teal-400/70 ml-1">
+                  — a distinctive visual region will locate the correct position on new documents, even on scanned PDFs.
+                </span>
+              </div>
+              <img
+                src={activeMask.visualAnchor.patchDataUrl}
+                alt="Anchor patch"
+                className="w-12 h-12 rounded border border-teal-500/30 object-cover shrink-0"
+              />
+            </div>
+          )}
 
           <div ref={containerRef} className="relative bg-surface rounded-xl overflow-hidden border border-white/8">
             {!canvasState && !loadError && (

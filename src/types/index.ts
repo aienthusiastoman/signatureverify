@@ -1,3 +1,9 @@
+export interface VisualAnchor {
+  patchDataUrl: string;
+  patchRect: { x: number; y: number; width: number; height: number };
+  offsetToMask: { dx: number; dy: number };
+}
+
 export interface MaskRect {
   x: number;
   y: number;
@@ -9,6 +15,7 @@ export interface MaskRect {
   pageThumbnailMaskFrac?: { x: number; y: number; w: number; h: number };
   autoDetect?: boolean;
   anchorRelativeOffset?: { dx: number; dy: number };
+  visualAnchor?: VisualAnchor;
 }
 
 export interface MaskRegion {
@@ -17,6 +24,7 @@ export interface MaskRegion {
   width: number;
   height: number;
   anchorRelativeOffset?: { dx: number; dy: number };
+  visualAnchor?: VisualAnchor;
 }
 
 export interface MaskDefinition {
@@ -30,6 +38,7 @@ export interface MaskDefinition {
   regions: MaskRegion[];
   weight?: number;
   regionWeights?: number[];
+  visualAnchor?: VisualAnchor;
 }
 
 export interface UploadedFile {

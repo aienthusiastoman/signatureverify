@@ -1,8 +1,9 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Wand2, RotateCcw, Move, ChevronLeft, ChevronRight, FileText, ScanText, Scan, MapPin } from 'lucide-react';
+import { Wand2, RotateCcw, Move, ChevronLeft, ChevronRight, FileText, ScanText, Scan, MapPin, Crosshair } from 'lucide-react';
 import type { MaskRect, UploadedFile } from '../types';
 import { autoDetectSignature } from '../lib/signatureDetect';
 import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds } from '../lib/imageUtils';
+import { captureVisualAnchor } from '../lib/templateMatch';
 
 interface Props {
   file: UploadedFile;
@@ -214,7 +215,9 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
         } catch { /* non-fatal */ }
       }
 
-      onMaskChange({ ...natural, anchorText: mask?.anchorText, pageThumbnail: thumb, pageThumbnailMaskFrac: frac, autoDetect: false, anchorRelativeOffset });
+      const visualAnchor = c ? captureVisualAnchor(c, natural) ?? undefined : undefined;
+
+      onMaskChange({ ...natural, anchorText: mask?.anchorText, pageThumbnail: thumb, pageThumbnailMaskFrac: frac, autoDetect: false, anchorRelativeOffset, visualAnchor });
     }
   };
 
@@ -235,7 +238,9 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
       } catch { /* non-fatal */ }
     }
 
-    onMaskChange({ ...detected, page: selectedPage, anchorText: mask?.anchorText, pageThumbnail: thumb, pageThumbnailMaskFrac: frac, autoDetect: false, anchorRelativeOffset });
+    const visualAnchor = captureVisualAnchor(c, detected) ?? undefined;
+
+    onMaskChange({ ...detected, page: selectedPage, anchorText: mask?.anchorText, pageThumbnail: thumb, pageThumbnailMaskFrac: frac, autoDetect: false, anchorRelativeOffset, visualAnchor });
   };
 
   const handleToggleAutoDetect = () => {
@@ -443,6 +448,23 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
               Anchor offset locked — signature position will track &ldquo;{mask.anchorText}&rdquo; across documents
             </p>
           )}
+        </div>
+      )}
+
+      {mask?.visualAnchor && !autoDetect && (
+        <div className="flex items-start gap-2 text-xs bg-teal-500/10 border border-teal-500/20 rounded-lg px-3 py-2.5 text-teal-300">
+          <Crosshair size={13} className="shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <span className="font-semibold">Visual anchor captured</span>
+            <span className="text-teal-400/70 ml-1">
+              — a distinctive region near the signature will be used to locate the correct position on new documents, even when text-based detection fails.
+            </span>
+          </div>
+          <img
+            src={mask.visualAnchor.patchDataUrl}
+            alt="Anchor patch"
+            className="w-12 h-12 rounded border border-teal-500/30 object-cover shrink-0"
+          />
         </div>
       )}
 

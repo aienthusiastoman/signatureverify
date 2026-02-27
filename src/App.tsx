@@ -25,7 +25,8 @@ import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { useSignatureProcess } from './hooks/useSignatureProcess';
 import {
   extractRegion, extractCompositeRegion, renderPdfPageToCanvas,
-  findPageByAnchorText, findPageBySignatureBlob, findAnchorTextPixelBounds
+  findPageByAnchorText, findPageBySignatureBlob, findAnchorTextPixelBounds,
+  findPageByVisualAnchor, applyVisualAnchorToMask, applyVisualAnchorToRegions
 } from './lib/imageUtils';
 import { detectSignatureInRegionFiltered } from './lib/signatureDetect';
 import type {
@@ -105,6 +106,13 @@ function CompareToolContent() {
   const resolvePageForMask1 = async (file: UploadedFile, mask: MaskRect): Promise<{ mask: MaskRect; warning?: string }> => {
     if (file.type !== 'pdf') return { mask };
 
+    if (mask.visualAnchor) {
+      const vaResult = await findPageByVisualAnchor(file.file, mask.visualAnchor);
+      if (vaResult && vaResult.confidence >= 0.4) {
+        return { mask: { ...mask, page: vaResult.page } };
+      }
+    }
+
     let frac = mask.pageThumbnailMaskFrac;
     if (!frac && mask.width > 5 && mask.height > 5) {
       const refPage = mask.page ?? 1;
@@ -134,6 +142,14 @@ function CompareToolContent() {
     maskDef: MaskDefinition
   ): Promise<{ page: number; warning?: string }> => {
     if (file.type !== 'pdf') return { page: maskDef.page ?? 1 };
+
+    const anchor = maskDef.visualAnchor || maskDef.regions[0]?.visualAnchor;
+    if (anchor) {
+      const vaResult = await findPageByVisualAnchor(file.file, anchor);
+      if (vaResult && vaResult.confidence >= 0.4) {
+        return { page: vaResult.page };
+      }
+    }
 
     const firstRegion = maskDef.regions[0];
 
@@ -220,7 +236,12 @@ function CompareToolContent() {
         const detected = detectSignatureInRegionFiltered(c1, resolvedMask1);
         resolvedMask1 = { ...resolvedMask1, ...detected };
       } else {
-        resolvedMask1 = await applyAnchorOffsetToMask(file1, resolvedMask1, page1);
+        const vaAdjusted = await applyVisualAnchorToMask(c1, resolvedMask1);
+        if (vaAdjusted) {
+          resolvedMask1 = vaAdjusted;
+        } else {
+          resolvedMask1 = await applyAnchorOffsetToMask(file1, resolvedMask1, page1);
+        }
       }
 
       const crop1 = extractRegion(c1, resolvedMask1);
@@ -245,7 +266,13 @@ function CompareToolContent() {
           const detected = detectSignatureInRegionFiltered(c2, pseudoMask);
           effectiveRegions = [{ x: detected.x, y: detected.y, width: detected.width, height: detected.height }];
         } else {
-          effectiveRegions = await applyAnchorOffsetToRegions(file2, maskDef, resolvedPage);
+          const vaRegions = await applyVisualAnchorToRegions(c2, maskDef.regions, maskDef.visualAnchor);
+          const anyMoved = vaRegions.some((r, i) => r.x !== maskDef.regions[i].x || r.y !== maskDef.regions[i].y);
+          if (anyMoved) {
+            effectiveRegions = vaRegions;
+          } else {
+            effectiveRegions = await applyAnchorOffsetToRegions(file2, maskDef, resolvedPage);
+          }
         }
 
         const crop = extractCompositeRegion(c2, effectiveRegions);

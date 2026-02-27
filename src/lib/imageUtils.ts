@@ -1,5 +1,6 @@
-import type { MaskRect } from '../types';
+import type { MaskRect, VisualAnchor } from '../types';
 import Tesseract from 'tesseract.js';
+import { findVisualAnchorOnCanvas, resolveVisualAnchorPosition } from './templateMatch';
 
 function getPdfjsLib() {
   const lib = (window as any).pdfjsLib;
@@ -664,4 +665,79 @@ export function dataUrlToBlob(dataUrl: string): Blob {
   const arr = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
   return new Blob([arr], { type: mime });
+}
+
+export async function findPageByVisualAnchor(
+  file: File,
+  anchor: VisualAnchor
+): Promise<{ page: number; confidence: number } | null> {
+  const pdfjsLib = getPdfjsLib();
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+  let bestPage = -1;
+  let bestConfidence = 0;
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: RENDER_SCALE });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
+
+    const result = await findVisualAnchorOnCanvas(canvas, anchor);
+    if (result && result.confidence > bestConfidence) {
+      bestConfidence = result.confidence;
+      bestPage = i;
+    }
+  }
+
+  if (bestPage < 0 || bestConfidence < 0.3) return null;
+  return { page: bestPage, confidence: bestConfidence };
+}
+
+export async function applyVisualAnchorToMask(
+  canvas: HTMLCanvasElement,
+  mask: MaskRect
+): Promise<MaskRect | null> {
+  if (!mask.visualAnchor) return null;
+  const result = await resolveVisualAnchorPosition(canvas, mask.visualAnchor);
+  if (!result || result.confidence < 0.4) return null;
+  return {
+    ...mask,
+    x: Math.max(0, result.maskX),
+    y: Math.max(0, result.maskY),
+  };
+}
+
+export async function applyVisualAnchorToRegions(
+  canvas: HTMLCanvasElement,
+  regions: { x: number; y: number; width: number; height: number; visualAnchor?: VisualAnchor }[],
+  maskLevelAnchor?: VisualAnchor
+): Promise<{ x: number; y: number; width: number; height: number }[]> {
+  const adjusted: { x: number; y: number; width: number; height: number }[] = [];
+
+  for (const r of regions) {
+    const anchor = r.visualAnchor || maskLevelAnchor;
+    if (!anchor) {
+      adjusted.push(r);
+      continue;
+    }
+
+    const result = await resolveVisualAnchorPosition(canvas, anchor);
+    if (!result || result.confidence < 0.4) {
+      adjusted.push(r);
+      continue;
+    }
+
+    adjusted.push({
+      x: Math.max(0, result.maskX),
+      y: Math.max(0, result.maskY),
+      width: r.width,
+      height: r.height,
+    });
+  }
+
+  return adjusted;
 }
