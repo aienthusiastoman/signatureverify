@@ -1,7 +1,5 @@
 import type { VisualAnchor } from '../types';
 
-const ANCHOR_PATCH_SIZE = 150;
-
 function canvasToGray(canvas: HTMLCanvasElement): { gray: Uint8Array; w: number; h: number } {
   const ctx = canvas.getContext('2d')!;
   const w = canvas.width;
@@ -12,14 +10,6 @@ function canvasToGray(canvas: HTMLCanvasElement): { gray: Uint8Array; w: number;
     gray[i] = Math.round(0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]);
   }
   return { gray, w, h };
-}
-
-function imageDataToGray(data: Uint8ClampedArray, w: number, h: number): Uint8Array {
-  const gray = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) {
-    gray[i] = Math.round(0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2]);
-  }
-  return gray;
 }
 
 function dataUrlToCanvas(dataUrl: string): Promise<HTMLCanvasElement> {
@@ -37,123 +27,26 @@ function dataUrlToCanvas(dataUrl: string): Promise<HTMLCanvasElement> {
   });
 }
 
-export function selectAnchorPatchAuto(
+export function captureVisualAnchorFromRect(
   canvas: HTMLCanvasElement,
+  anchorRect: { x: number; y: number; width: number; height: number },
   maskRect: { x: number; y: number; width: number; height: number }
-): { patchRect: { x: number; y: number; width: number; height: number }; patchDataUrl: string } | null {
-  const cw = canvas.width;
-  const ch = canvas.height;
-  if (cw < 40 || ch < 40) return null;
-
-  const ctx = canvas.getContext('2d')!;
-  const patchW = Math.min(ANCHOR_PATCH_SIZE, Math.floor(cw * 0.25));
-  const patchH = Math.min(ANCHOR_PATCH_SIZE, Math.floor(ch * 0.25));
-
-  const candidates: { x: number; y: number; score: number }[] = [];
-
-  const maskCX = maskRect.x + maskRect.width / 2;
-  const maskCY = maskRect.y + maskRect.height / 2;
-
-  const offsets = [
-    { x: maskRect.x - patchW - 20, y: maskRect.y },
-    { x: maskRect.x + maskRect.width + 20, y: maskRect.y },
-    { x: maskRect.x, y: maskRect.y - patchH - 20 },
-    { x: maskRect.x, y: maskRect.y + maskRect.height + 20 },
-    { x: 20, y: 20 },
-    { x: cw - patchW - 20, y: 20 },
-    { x: 20, y: ch - patchH - 20 },
-    { x: cw - patchW - 20, y: ch - patchH - 20 },
-    { x: Math.floor(cw / 2 - patchW / 2), y: 20 },
-    { x: 20, y: Math.floor(ch / 2 - patchH / 2) },
-  ];
-
-  for (const pos of offsets) {
-    const px = Math.max(0, Math.min(cw - patchW, Math.round(pos.x)));
-    const py = Math.max(0, Math.min(ch - patchH, Math.round(pos.y)));
-
-    const overlapX = Math.max(0, Math.min(px + patchW, maskRect.x + maskRect.width) - Math.max(px, maskRect.x));
-    const overlapY = Math.max(0, Math.min(py + patchH, maskRect.y + maskRect.height) - Math.max(py, maskRect.y));
-    if (overlapX > 0 && overlapY > 0) continue;
-
-    const imgData = ctx.getImageData(px, py, patchW, patchH);
-    const d = imgData.data;
-
-    let sum = 0;
-    let sumSq = 0;
-    const n = patchW * patchH;
-    for (let i = 0; i < n; i++) {
-      const g = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-      sum += g;
-      sumSq += g * g;
-    }
-    const mean = sum / n;
-    const variance = sumSq / n - mean * mean;
-
-    let edgeCount = 0;
-    const gray = imageDataToGray(d, patchW, patchH);
-    for (let y = 1; y < patchH - 1; y++) {
-      for (let x = 1; x < patchW - 1; x++) {
-        const gx = gray[y * patchW + x + 1] - gray[y * patchW + x - 1];
-        const gy = gray[(y + 1) * patchW + x] - gray[(y - 1) * patchW + x];
-        if (Math.abs(gx) + Math.abs(gy) > 40) edgeCount++;
-      }
-    }
-
-    const edgeDensity = edgeCount / n;
-    const patchCX = px + patchW / 2;
-    const patchCY = py + patchH / 2;
-    const dist = Math.sqrt((patchCX - maskCX) ** 2 + (patchCY - maskCY) ** 2);
-    const maxDist = Math.sqrt(cw * cw + ch * ch);
-    const proxPenalty = 1 - (dist / maxDist) * 0.3;
-
-    const score = (variance * 0.4 + edgeDensity * 15000 * 0.6) * proxPenalty;
-
-    if (variance > 100 && edgeDensity > 0.02) {
-      candidates.push({ x: px, y: py, score });
-    }
-  }
-
-  if (candidates.length === 0) {
-    for (const pos of offsets) {
-      const px = Math.max(0, Math.min(cw - patchW, Math.round(pos.x)));
-      const py = Math.max(0, Math.min(ch - patchH, Math.round(pos.y)));
-      const overlapX = Math.max(0, Math.min(px + patchW, maskRect.x + maskRect.width) - Math.max(px, maskRect.x));
-      const overlapY = Math.max(0, Math.min(py + patchH, maskRect.y + maskRect.height) - Math.max(py, maskRect.y));
-      if (overlapX > 0 && overlapY > 0) continue;
-      candidates.push({ x: px, y: py, score: 1 });
-      break;
-    }
-  }
-
-  if (candidates.length === 0) return null;
-
-  candidates.sort((a, b) => b.score - a.score);
-  const best = candidates[0];
-
+): VisualAnchor {
   const patchCanvas = document.createElement('canvas');
-  patchCanvas.width = patchW;
-  patchCanvas.height = patchH;
-  patchCanvas.getContext('2d')!.drawImage(canvas, best.x, best.y, patchW, patchH, 0, 0, patchW, patchH);
+  patchCanvas.width = anchorRect.width;
+  patchCanvas.height = anchorRect.height;
+  patchCanvas.getContext('2d')!.drawImage(
+    canvas,
+    anchorRect.x, anchorRect.y, anchorRect.width, anchorRect.height,
+    0, 0, anchorRect.width, anchorRect.height
+  );
 
   return {
-    patchRect: { x: best.x, y: best.y, width: patchW, height: patchH },
     patchDataUrl: patchCanvas.toDataURL('image/png'),
-  };
-}
-
-export function captureVisualAnchor(
-  canvas: HTMLCanvasElement,
-  maskRect: { x: number; y: number; width: number; height: number }
-): VisualAnchor | null {
-  const result = selectAnchorPatchAuto(canvas, maskRect);
-  if (!result) return null;
-
-  return {
-    patchDataUrl: result.patchDataUrl,
-    patchRect: result.patchRect,
+    patchRect: { ...anchorRect },
     offsetToMask: {
-      dx: maskRect.x - result.patchRect.x,
-      dy: maskRect.y - result.patchRect.y,
+      dx: maskRect.x - anchorRect.x,
+      dy: maskRect.y - anchorRect.y,
     },
   };
 }
@@ -165,6 +58,7 @@ export async function findVisualAnchorOnCanvas(
   const patchCanvas = await dataUrlToCanvas(anchor.patchDataUrl);
   const pw = patchCanvas.width;
   const ph = patchCanvas.height;
+  if (pw < 4 || ph < 4) return null;
 
   const { gray: pageGray, w: pageW, h: pageH } = canvasToGray(canvas);
   const { gray: patchGray } = canvasToGray(patchCanvas);
@@ -180,89 +74,144 @@ export async function findVisualAnchorOnCanvas(
   const patchStd = Math.sqrt(Math.max(0, patchSumSq / patchN - patchMean * patchMean));
   if (patchStd < 1) return null;
 
-  const stepX = Math.max(1, Math.floor(pw / 8));
-  const stepY = Math.max(1, Math.floor(ph / 8));
+  const downscale = Math.max(1, Math.floor(Math.max(pageW, pageH) / 600));
+  const dsW = Math.floor(pageW / downscale);
+  const dsH = Math.floor(pageH / downscale);
+  const dsPw = Math.max(2, Math.floor(pw / downscale));
+  const dsPh = Math.max(2, Math.floor(ph / downscale));
 
+  let dsPageGray: Uint8Array;
+  let dsPatchGray: Uint8Array;
+
+  if (downscale > 1) {
+    dsPageGray = new Uint8Array(dsW * dsH);
+    for (let y = 0; y < dsH; y++) {
+      for (let x = 0; x < dsW; x++) {
+        dsPageGray[y * dsW + x] = pageGray[y * downscale * pageW + x * downscale];
+      }
+    }
+    dsPatchGray = new Uint8Array(dsPw * dsPh);
+    for (let y = 0; y < dsPh; y++) {
+      for (let x = 0; x < dsPw; x++) {
+        dsPatchGray[y * dsPw + x] = patchGray[y * downscale * pw + x * downscale];
+      }
+    }
+  } else {
+    dsPageGray = pageGray;
+    dsPatchGray = patchGray;
+  }
+
+  let dsPatchSum = 0;
+  let dsPatchSumSq = 0;
+  const dsPatchN = dsPw * dsPh;
+  for (let i = 0; i < dsPatchN; i++) {
+    dsPatchSum += dsPatchGray[i];
+    dsPatchSumSq += dsPatchGray[i] * dsPatchGray[i];
+  }
+  const dsPatchMean = dsPatchSum / dsPatchN;
+  const dsPatchStd = Math.sqrt(Math.max(0, dsPatchSumSq / dsPatchN - dsPatchMean * dsPatchMean));
+  if (dsPatchStd < 1) return null;
+
+  const coarseStep = Math.max(1, Math.floor(Math.min(dsPw, dsPh) / 4));
   let bestNcc = -1;
-  let bestX = 0;
-  let bestY = 0;
+  let bestDsX = 0;
+  let bestDsY = 0;
 
-  for (let ty = 0; ty <= pageH - ph; ty += stepY) {
-    for (let tx = 0; tx <= pageW - pw; tx += stepX) {
-      let regionSum = 0;
-      let regionSumSq = 0;
-      let crossSum = 0;
-
-      for (let y = 0; y < ph; y++) {
-        const rowOffset = (ty + y) * pageW + tx;
-        const patchRowOffset = y * pw;
-        for (let x = 0; x < pw; x++) {
-          const v = pageGray[rowOffset + x];
-          const p = patchGray[patchRowOffset + x];
-          regionSum += v;
-          regionSumSq += v * v;
+  for (let ty = 0; ty <= dsH - dsPh; ty += coarseStep) {
+    for (let tx = 0; tx <= dsW - dsPw; tx += coarseStep) {
+      let rSum = 0, rSumSq = 0, crossSum = 0;
+      for (let y = 0; y < dsPh; y++) {
+        const rowOff = (ty + y) * dsW + tx;
+        const pRowOff = y * dsPw;
+        for (let x = 0; x < dsPw; x++) {
+          const v = dsPageGray[rowOff + x];
+          const p = dsPatchGray[pRowOff + x];
+          rSum += v;
+          rSumSq += v * v;
           crossSum += v * p;
         }
       }
-
-      const regionMean = regionSum / patchN;
-      const regionStd = Math.sqrt(Math.max(0, regionSumSq / patchN - regionMean * regionMean));
-      if (regionStd < 1) continue;
-
-      const ncc = (crossSum / patchN - regionMean * patchMean) / (regionStd * patchStd);
-
+      const rMean = rSum / dsPatchN;
+      const rStd = Math.sqrt(Math.max(0, rSumSq / dsPatchN - rMean * rMean));
+      if (rStd < 1) continue;
+      const ncc = (crossSum / dsPatchN - rMean * dsPatchMean) / (rStd * dsPatchStd);
       if (ncc > bestNcc) {
         bestNcc = ncc;
-        bestX = tx;
-        bestY = ty;
+        bestDsX = tx;
+        bestDsY = ty;
       }
     }
   }
 
-  if (bestNcc < 0.3) return null;
+  if (bestNcc < 0.25) return null;
 
-  const refineRadius = Math.max(stepX, stepY);
-  let refinedNcc = bestNcc;
-  let refinedX = bestX;
-  let refinedY = bestY;
+  let bestFullX = bestDsX * downscale;
+  let bestFullY = bestDsY * downscale;
+  let bestFullNcc = bestNcc;
 
-  for (let ty = Math.max(0, bestY - refineRadius); ty <= Math.min(pageH - ph, bestY + refineRadius); ty++) {
-    for (let tx = Math.max(0, bestX - refineRadius); tx <= Math.min(pageW - pw, bestX + refineRadius); tx++) {
-      let regionSum = 0;
-      let regionSumSq = 0;
-      let crossSum = 0;
+  const searchR = Math.max(coarseStep * downscale, 20);
+  const refineStep = Math.max(1, Math.floor(Math.min(pw, ph) / 12));
 
+  for (let ty = Math.max(0, bestFullY - searchR); ty <= Math.min(pageH - ph, bestFullY + searchR); ty += refineStep) {
+    for (let tx = Math.max(0, bestFullX - searchR); tx <= Math.min(pageW - pw, bestFullX + searchR); tx += refineStep) {
+      let rSum = 0, rSumSq = 0, crossSum = 0;
       for (let y = 0; y < ph; y++) {
-        const rowOffset = (ty + y) * pageW + tx;
-        const patchRowOffset = y * pw;
+        const rowOff = (ty + y) * pageW + tx;
+        const pRowOff = y * pw;
         for (let x = 0; x < pw; x++) {
-          const v = pageGray[rowOffset + x];
-          const p = patchGray[patchRowOffset + x];
-          regionSum += v;
-          regionSumSq += v * v;
+          const v = pageGray[rowOff + x];
+          const p = patchGray[pRowOff + x];
+          rSum += v;
+          rSumSq += v * v;
           crossSum += v * p;
         }
       }
-
-      const regionMean = regionSum / patchN;
-      const regionStd = Math.sqrt(Math.max(0, regionSumSq / patchN - regionMean * regionMean));
-      if (regionStd < 1) continue;
-
-      const ncc = (crossSum / patchN - regionMean * patchMean) / (regionStd * patchStd);
-
-      if (ncc > refinedNcc) {
-        refinedNcc = ncc;
-        refinedX = tx;
-        refinedY = ty;
+      const rMean = rSum / patchN;
+      const rStd = Math.sqrt(Math.max(0, rSumSq / patchN - rMean * rMean));
+      if (rStd < 1) continue;
+      const ncc = (crossSum / patchN - rMean * patchMean) / (rStd * patchStd);
+      if (ncc > bestFullNcc) {
+        bestFullNcc = ncc;
+        bestFullX = tx;
+        bestFullY = ty;
       }
     }
   }
 
-  return {
-    x: refinedX,
-    y: refinedY,
-    confidence: refinedNcc,
-  };
+  const fineR = refineStep;
+  let finalNcc = bestFullNcc;
+  let finalX = bestFullX;
+  let finalY = bestFullY;
+
+  for (let ty = Math.max(0, bestFullY - fineR); ty <= Math.min(pageH - ph, bestFullY + fineR); ty++) {
+    for (let tx = Math.max(0, bestFullX - fineR); tx <= Math.min(pageW - pw, bestFullX + fineR); tx++) {
+      let rSum = 0, rSumSq = 0, crossSum = 0;
+      for (let y = 0; y < ph; y++) {
+        const rowOff = (ty + y) * pageW + tx;
+        const pRowOff = y * pw;
+        for (let x = 0; x < pw; x++) {
+          const v = pageGray[rowOff + x];
+          const p = patchGray[pRowOff + x];
+          rSum += v;
+          rSumSq += v * v;
+          crossSum += v * p;
+        }
+      }
+      const rMean = rSum / patchN;
+      const rStd = Math.sqrt(Math.max(0, rSumSq / patchN - rMean * rMean));
+      if (rStd < 1) continue;
+      const ncc = (crossSum / patchN - rMean * patchMean) / (rStd * patchStd);
+      if (ncc > finalNcc) {
+        finalNcc = ncc;
+        finalX = tx;
+        finalY = ty;
+      }
+    }
+  }
+
+  if (finalNcc < 0.3) return null;
+
+  return { x: finalX, y: finalY, confidence: finalNcc };
 }
 
 export async function resolveVisualAnchorPosition(
@@ -277,25 +226,4 @@ export async function resolveVisualAnchorPosition(
     maskY: Math.round(found.y + anchor.offsetToMask.dy),
     confidence: found.confidence,
   };
-}
-
-export async function findPageByVisualAnchor(
-  anchor: VisualAnchor,
-  renderPage: (pageNum: number) => Promise<HTMLCanvasElement>,
-  totalPages: number
-): Promise<{ page: number; confidence: number } | null> {
-  let bestPage = -1;
-  let bestConfidence = 0;
-
-  for (let i = 1; i <= totalPages; i++) {
-    const canvas = await renderPage(i);
-    const result = await findVisualAnchorOnCanvas(canvas, anchor);
-    if (result && result.confidence > bestConfidence) {
-      bestConfidence = result.confidence;
-      bestPage = i;
-    }
-  }
-
-  if (bestPage < 0 || bestConfidence < 0.3) return null;
-  return { page: bestPage, confidence: bestConfidence };
 }

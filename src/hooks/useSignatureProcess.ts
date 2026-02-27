@@ -1,7 +1,12 @@
 import { useState, useCallback } from 'react';
-import { supabase, UPLOADS_BUCKET, RESULTS_BUCKET, getPublicUrl } from '../lib/supabase';
+import { supabase, UPLOADS_BUCKET } from '../lib/supabase';
 import { dataUrlToBlob } from '../lib/imageUtils';
-import type { SignatureRegion, MultiSignatureRegion, VerificationJob, ProcessResponse, CompareMode } from '../types';
+import type { MaskRect, SignatureRegion, MultiSignatureRegion, VerificationJob, ProcessResponse, CompareMode } from '../types';
+
+function stripVisualAnchor(mask: MaskRect): Omit<MaskRect, 'visualAnchor'> {
+  const { visualAnchor: _, ...rest } = mask;
+  return rest;
+}
 
 const EDGE_FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/signature-process`;
 
@@ -49,8 +54,8 @@ export function useSignatureProcess() {
       formData.append('file2_name', file2.name);
       formData.append('file1_path', path1);
       formData.append('file2_path', path2);
-      formData.append('mask1', JSON.stringify(region1.mask));
-      formData.append('mask2', JSON.stringify(region2.mask));
+      formData.append('mask1', JSON.stringify(stripVisualAnchor(region1.mask)));
+      formData.append('mask2', JSON.stringify(stripVisualAnchor(region2.mask)));
       formData.append('scale_file2', String(scaleFile2));
       formData.append('matched_page1', String(region1.mask.page ?? 1));
       formData.append('matched_page2', String(region2.mask.page ?? 1));
@@ -122,7 +127,7 @@ export function useSignatureProcess() {
       formData.append('file2_name', file2.name);
       formData.append('file1_path', path1);
       formData.append('file2_path', path2);
-      formData.append('mask1', JSON.stringify(region1.mask));
+      formData.append('mask1', JSON.stringify(stripVisualAnchor(region1.mask)));
       formData.append('matched_page1', String(region1.mask.page ?? 1));
       formData.append('mode', mode);
       formData.append('multi_mask_mode', 'true');

@@ -3,7 +3,9 @@ import { Wand2, RotateCcw, Move, ChevronLeft, ChevronRight, FileText, ScanText, 
 import type { MaskRect, UploadedFile } from '../types';
 import { autoDetectSignature } from '../lib/signatureDetect';
 import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds } from '../lib/imageUtils';
-import { captureVisualAnchor } from '../lib/templateMatch';
+import { captureVisualAnchorFromRect } from '../lib/templateMatch';
+
+type DrawMode = 'mask' | 'anchor';
 
 interface Props {
   file: UploadedFile;
@@ -30,9 +32,11 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
   const [thumbsLoading, setThumbsLoading] = useState(false);
   const [anchorSearchFailed, setAnchorSearchFailed] = useState(false);
   const [anchorSearching, setAnchorSearching] = useState(false);
+  const [drawMode, setDrawMode] = useState<DrawMode>('mask');
 
   const isPdf = file.type === 'pdf';
   const autoDetect = mask?.autoDetect ?? false;
+  const hasMask = !!mask && mask.width > 5;
 
   useEffect(() => {
     const count = file.pageCount ?? 1;
@@ -90,7 +94,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
       setDisplaySize({ w: Math.round(srcCanvas.width * scale), h: Math.round(srcCanvas.height * scale) });
       setDisplayDataUrl(offscreen.toDataURL('image/png'));
       setLoaded(true);
-    } catch (e) {
+    } catch {
       setLoadError('Failed to render document.');
     }
   }, [file, isPdf, canvasRef]);
@@ -103,9 +107,6 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     if (page === selectedPage) return;
     setSelectedPage(page);
     onMaskChange({ x: 0, y: 0, width: 0, height: 0, page, anchorText: mask?.anchorText, autoDetect: mask?.autoDetect });
-    thumbStripRef.current
-      ?.querySelector(`[data-page="${page}"]`)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   };
 
   const getRelPos = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -116,9 +117,9 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     };
   };
 
-  const scaleToNatural = (r: MaskRect): MaskRect => {
+  const scaleToNatural = (r: { x: number; y: number; width: number; height: number }): { x: number; y: number; width: number; height: number; page?: number } => {
     const c = canvasRef.current;
-    if (!c || !displaySize.w) return r;
+    if (!c || !displaySize.w) return { ...r, page: selectedPage };
     return {
       x: Math.round(r.x * (c.width / displaySize.w)),
       y: Math.round(r.y * (c.height / displaySize.h)),
@@ -139,34 +140,62 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     };
   };
 
-  const drawOverlay = useCallback((displayMask: MaskRect | null, isAuto = false) => {
+  const drawOverlay = useCallback((displayMask: MaskRect | null, isAuto = false, anchorDisplayRect?: { x: number; y: number; width: number; height: number } | null) => {
     const overlay = overlayRef.current;
     if (!overlay || !displaySize.w) return;
     overlay.width = displaySize.w;
     overlay.height = displaySize.h;
     const ctx = overlay.getContext('2d')!;
     ctx.clearRect(0, 0, overlay.width, overlay.height);
-    if (!displayMask || displayMask.width < 2 || displayMask.height < 2) return;
 
-    ctx.fillStyle = 'rgba(0,0,0,0.42)';
-    ctx.fillRect(0, 0, overlay.width, overlay.height);
-    ctx.clearRect(displayMask.x, displayMask.y, displayMask.width, displayMask.height);
+    if (displayMask && displayMask.width >= 2 && displayMask.height >= 2) {
+      ctx.fillStyle = 'rgba(0,0,0,0.42)';
+      ctx.fillRect(0, 0, overlay.width, overlay.height);
+      ctx.clearRect(displayMask.x, displayMask.y, displayMask.width, displayMask.height);
 
-    ctx.strokeStyle = isAuto ? '#10b981' : '#3b82f6';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 3]);
-    ctx.strokeRect(displayMask.x, displayMask.y, displayMask.width, displayMask.height);
-    ctx.setLineDash([]);
+      ctx.strokeStyle = isAuto ? '#10b981' : '#3b82f6';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 3]);
+      ctx.strokeRect(displayMask.x, displayMask.y, displayMask.width, displayMask.height);
+      ctx.setLineDash([]);
 
-    ctx.fillStyle = isAuto ? '#10b981' : '#3b82f6';
-    [[displayMask.x, displayMask.y],
-     [displayMask.x + displayMask.width, displayMask.y],
-     [displayMask.x, displayMask.y + displayMask.height],
-     [displayMask.x + displayMask.width, displayMask.y + displayMask.height],
-    ].forEach(([hx, hy]) => {
-      ctx.beginPath(); ctx.arc(hx, hy, 5, 0, Math.PI * 2); ctx.fill();
-    });
-  }, [displaySize]);
+      ctx.fillStyle = isAuto ? '#10b981' : '#3b82f6';
+      [[displayMask.x, displayMask.y],
+       [displayMask.x + displayMask.width, displayMask.y],
+       [displayMask.x, displayMask.y + displayMask.height],
+       [displayMask.x + displayMask.width, displayMask.y + displayMask.height],
+      ].forEach(([hx, hy]) => {
+        ctx.beginPath(); ctx.arc(hx, hy, 5, 0, Math.PI * 2); ctx.fill();
+      });
+    }
+
+    const anchorToDraw = anchorDisplayRect || (mask?.visualAnchor?.patchRect ? scaleRectToDisplay(mask.visualAnchor.patchRect) : null);
+    if (anchorToDraw && anchorToDraw.width >= 2 && anchorToDraw.height >= 2) {
+      ctx.strokeStyle = '#14b8a6';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(anchorToDraw.x, anchorToDraw.y, anchorToDraw.width, anchorToDraw.height);
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = 'rgba(20,184,166,0.12)';
+      ctx.fillRect(anchorToDraw.x, anchorToDraw.y, anchorToDraw.width, anchorToDraw.height);
+
+      ctx.fillStyle = '#14b8a6';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillText('ANCHOR', anchorToDraw.x + 4, anchorToDraw.y - 4);
+    }
+  }, [displaySize, mask?.visualAnchor]);
+
+  const scaleRectToDisplay = (r: { x: number; y: number; width: number; height: number }) => {
+    const c = canvasRef.current;
+    if (!c || !displaySize.w) return r;
+    return {
+      x: Math.round(r.x * (displaySize.w / c.width)),
+      y: Math.round(r.y * (displaySize.h / c.height)),
+      width: Math.round(r.width * (displaySize.w / c.width)),
+      height: Math.round(r.height * (displaySize.h / c.height)),
+    };
+  };
 
   useEffect(() => {
     if (!loaded) return;
@@ -177,6 +206,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (autoDetect) return;
+    if (drawMode === 'anchor' && !hasMask) return;
     setStartPos(getRelPos(e));
     setDrawing(true);
   };
@@ -184,7 +214,20 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!drawing || autoDetect) return;
     const pos = getRelPos(e);
-    drawOverlay({ x: Math.min(pos.x, startPos.x), y: Math.min(pos.y, startPos.y), width: Math.abs(pos.x - startPos.x), height: Math.abs(pos.y - startPos.y) });
+    const liveRect = {
+      x: Math.min(pos.x, startPos.x),
+      y: Math.min(pos.y, startPos.y),
+      width: Math.abs(pos.x - startPos.x),
+      height: Math.abs(pos.y - startPos.y),
+    };
+
+    if (drawMode === 'mask') {
+      drawOverlay(liveRect);
+    } else {
+      const maskOnThisPage = mask && (mask.page === selectedPage || !isPdf);
+      const displayMask = maskOnThisPage && mask ? scaleToDisplay(mask) : null;
+      drawOverlay(displayMask, false, liveRect);
+    }
   };
 
   const makeFrac = (natural: { x: number; y: number; width: number; height: number }, c: HTMLCanvasElement) => ({
@@ -198,27 +241,42 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     if (!drawing || autoDetect) return;
     setDrawing(false);
     const pos = getRelPos(e);
-    const displayMask: MaskRect = { x: Math.min(pos.x, startPos.x), y: Math.min(pos.y, startPos.y), width: Math.abs(pos.x - startPos.x), height: Math.abs(pos.y - startPos.y) };
-    if (displayMask.width > 5 && displayMask.height > 5) {
-      const natural = scaleToNatural(displayMask);
-      const c = canvasRef.current;
-      const frac = c ? makeFrac(natural, c) : undefined;
-      const thumb = c ? captureStructuralThumbnail(c, natural) : undefined;
+    const displayRect = {
+      x: Math.min(pos.x, startPos.x),
+      y: Math.min(pos.y, startPos.y),
+      width: Math.abs(pos.x - startPos.x),
+      height: Math.abs(pos.y - startPos.y),
+    };
 
-      let anchorRelativeOffset: { dx: number; dy: number } | undefined;
-      if (mask?.anchorText?.trim() && isPdf) {
-        try {
-          const anchorBounds = await findAnchorTextPixelBounds(file.file, selectedPage, mask.anchorText, c ?? undefined);
-          if (anchorBounds) {
-            anchorRelativeOffset = { dx: natural.x - anchorBounds.x, dy: natural.y - anchorBounds.y };
-          }
-        } catch { /* non-fatal */ }
-      }
+    if (displayRect.width < 5 || displayRect.height < 5) return;
 
-      const visualAnchor = c ? captureVisualAnchor(c, natural) ?? undefined : undefined;
+    const c = canvasRef.current;
 
-      onMaskChange({ ...natural, anchorText: mask?.anchorText, pageThumbnail: thumb, pageThumbnailMaskFrac: frac, autoDetect: false, anchorRelativeOffset, visualAnchor });
+    if (drawMode === 'anchor') {
+      if (!mask || mask.width < 5 || !c) return;
+      const naturalAnchorRect = scaleToNatural(displayRect);
+      const naturalMaskRect = { x: mask.x, y: mask.y, width: mask.width, height: mask.height };
+      const va = captureVisualAnchorFromRect(c, naturalAnchorRect, naturalMaskRect);
+      onMaskChange({ ...mask, visualAnchor: va });
+      setDrawMode('mask');
+      return;
     }
+
+    const natural = scaleToNatural(displayRect);
+    const frac = c ? makeFrac(natural, c) : undefined;
+    const thumb = c ? captureStructuralThumbnail(c, natural) : undefined;
+
+    let anchorRelativeOffset: { dx: number; dy: number } | undefined;
+    if (mask?.anchorText?.trim() && isPdf) {
+      try {
+        const anchorBounds = await findAnchorTextPixelBounds(file.file, selectedPage, mask.anchorText, c ?? undefined);
+        if (anchorBounds) {
+          anchorRelativeOffset = { dx: natural.x - anchorBounds.x, dy: natural.y - anchorBounds.y };
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    onMaskChange({ ...natural, anchorText: mask?.anchorText, pageThumbnail: thumb, pageThumbnailMaskFrac: frac, autoDetect: false, anchorRelativeOffset, visualAnchor: mask?.visualAnchor });
   };
 
   const handleAutoDetect = async () => {
@@ -238,9 +296,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
       } catch { /* non-fatal */ }
     }
 
-    const visualAnchor = captureVisualAnchor(c, detected) ?? undefined;
-
-    onMaskChange({ ...detected, page: selectedPage, anchorText: mask?.anchorText, pageThumbnail: thumb, pageThumbnailMaskFrac: frac, autoDetect: false, anchorRelativeOffset, visualAnchor });
+    onMaskChange({ ...detected, page: selectedPage, anchorText: mask?.anchorText, pageThumbnail: thumb, pageThumbnailMaskFrac: frac, autoDetect: false, anchorRelativeOffset });
   };
 
   const handleToggleAutoDetect = () => {
@@ -256,7 +312,13 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
 
   const handleReset = () => {
     onMaskChange({ x: 0, y: 0, width: 0, height: 0, page: selectedPage, anchorText: mask?.anchorText, autoDetect: false });
+    setDrawMode('mask');
     drawOverlay(null);
+  };
+
+  const handleClearAnchor = () => {
+    if (!mask) return;
+    onMaskChange({ ...mask, visualAnchor: undefined });
   };
 
   const maskOnThisPage = mask && (mask.page === selectedPage || !isPdf);
@@ -309,8 +371,24 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
       )}
 
       {!autoDetect && (
-        <div className="flex items-center gap-1.5 text-font/40 text-xs">
-          <Move size={12} /> <span>Draw to select region manually</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-font/40 text-xs">
+            <Move size={12} />
+            <span>{drawMode === 'mask' ? 'Draw to select signature region' : 'Draw to select anchor region'}</span>
+          </div>
+          {hasMask && !autoDetect && (
+            <button
+              onClick={() => setDrawMode(drawMode === 'mask' ? 'anchor' : 'mask')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                drawMode === 'anchor'
+                  ? 'bg-teal-500/20 border border-teal-500/40 text-teal-300'
+                  : 'bg-white/8 hover:bg-white/12 text-font/60 border border-white/8'
+              }`}
+            >
+              <Crosshair size={12} />
+              {drawMode === 'anchor' ? 'Drawing anchor...' : 'Set visual anchor'}
+            </button>
+          )}
         </div>
       )}
 
@@ -342,7 +420,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
           >
             {Array.from({ length: pageCount }, (_, i) => i + 1).map(pageNum => {
               const isSelected = pageNum === selectedPage;
-              const hasMask = mask?.page === pageNum && (mask?.width ?? 0) > 2;
+              const hasMaskOnPage = mask?.page === pageNum && (mask?.width ?? 0) > 2;
               const isAutoPage = mask?.page === pageNum && mask?.autoDetect;
               return (
                 <button
@@ -370,7 +448,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
                   }`}>
                     {pageNum}
                   </div>
-                  {(hasMask || isAutoPage) && (
+                  {(hasMaskOnPage || isAutoPage) && (
                     <div className={`absolute top-1 right-1 w-2 h-2 rounded-full shadow-sm ${isAutoPage ? 'bg-emerald-400' : 'bg-emerald-400'}`} />
                   )}
                 </button>
@@ -455,16 +533,33 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
         <div className="flex items-start gap-2 text-xs bg-teal-500/10 border border-teal-500/20 rounded-lg px-3 py-2.5 text-teal-300">
           <Crosshair size={13} className="shrink-0 mt-0.5" />
           <div className="flex-1">
-            <span className="font-semibold">Visual anchor captured</span>
+            <span className="font-semibold">Visual anchor set</span>
             <span className="text-teal-400/70 ml-1">
-              — a distinctive region near the signature will be used to locate the correct position on new documents, even when text-based detection fails.
+              — this region will be matched on new documents to locate the signature, even on scanned PDFs without a text layer.
             </span>
           </div>
           <img
             src={mask.visualAnchor.patchDataUrl}
             alt="Anchor patch"
-            className="w-12 h-12 rounded border border-teal-500/30 object-cover shrink-0"
+            className="w-14 h-14 rounded border border-teal-500/30 object-cover shrink-0"
           />
+          <button
+            onClick={handleClearAnchor}
+            className="text-teal-400/60 hover:text-red-400 transition-colors p-1"
+            title="Remove anchor"
+          >
+            <RotateCcw size={12} />
+          </button>
+        </div>
+      )}
+
+      {drawMode === 'anchor' && !mask?.visualAnchor && hasMask && (
+        <div className="flex items-start gap-2 text-xs bg-teal-500/10 border border-teal-500/20 rounded-lg px-3 py-2.5 text-teal-300 animate-pulse">
+          <Crosshair size={13} className="shrink-0 mt-0.5" />
+          <span>
+            Draw a rectangle around a <strong>fixed visual landmark</strong> near the signature (e.g. a box corner, logo, or printed label).
+            Avoid text that changes between documents.
+          </span>
         </div>
       )}
 
@@ -491,7 +586,7 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
               ref={overlayRef}
               width={displaySize.w}
               height={displaySize.h}
-              className={`absolute inset-0 ${autoDetect ? 'cursor-not-allowed' : 'cursor-crosshair'}`}
+              className={`absolute inset-0 ${autoDetect ? 'cursor-not-allowed' : drawMode === 'anchor' ? 'cursor-cell' : 'cursor-crosshair'}`}
               style={{ width: displaySize.w, height: displaySize.h }}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
@@ -504,6 +599,11 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
                   <Scan size={14} className="text-emerald-400" />
                   <span className="text-emerald-300 text-xs font-semibold">Full page will be scanned automatically</span>
                 </div>
+              </div>
+            )}
+            {drawMode === 'anchor' && !autoDetect && (
+              <div className="absolute top-2 left-2 bg-teal-600/90 text-white text-xs font-bold px-2.5 py-1 rounded-md flex items-center gap-1.5 pointer-events-none">
+                <Crosshair size={11} /> ANCHOR MODE
               </div>
             )}
           </div>

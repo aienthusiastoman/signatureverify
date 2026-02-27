@@ -6,7 +6,7 @@ import {
 import type { MaskDefinition, MaskRegion, UploadedFile } from '../types';
 import { autoDetectSignature } from '../lib/signatureDetect';
 import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds } from '../lib/imageUtils';
-import { captureVisualAnchor } from '../lib/templateMatch';
+import { captureVisualAnchorFromRect } from '../lib/templateMatch';
 
 let maskIdCounter = 0;
 function newMaskId() { return `mask-${++maskIdCounter}-${Date.now()}`; }
@@ -53,6 +53,7 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
   const [liveRect, setLiveRect] = useState<MaskRegion | null>(null);
   const [anchorSearchFailed, setAnchorSearchFailed] = useState(false);
   const [anchorSearching, setAnchorSearching] = useState(false);
+  const [drawMode, setDrawMode] = useState<'region' | 'anchor'>('region');
 
   const isPdf = file.type === 'pdf';
   const activeMask = masks[activeMaskIdx] ?? null;
@@ -244,8 +245,20 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
     if (displayRegion.width < 5 || displayRegion.height < 5) return;
     const natural = scaleToNatural(displayRegion, canvasState);
 
-    let anchorRelativeOffset: { dx: number; dy: number } | undefined;
+    const c = nativeCanvasRef.current;
     const currentMask = masks[activeMaskIdx];
+
+    if (drawMode === 'anchor') {
+      if (!currentMask || currentMask.regions.length === 0 || !c) return;
+      const firstRegion = currentMask.regions[0];
+      const va = captureVisualAnchorFromRect(c, natural, firstRegion);
+      const updated = masks.map((m, idx) => idx !== activeMaskIdx ? m : { ...m, visualAnchor: va });
+      onMasksChange(updated);
+      setDrawMode('region');
+      return;
+    }
+
+    let anchorRelativeOffset: { dx: number; dy: number } | undefined;
     if (currentMask?.anchorText?.trim() && isPdf) {
       try {
         const anchorBounds = await findAnchorTextPixelBounds(file.file, selectedPage, currentMask.anchorText, nativeCanvasRef.current ?? undefined);
@@ -255,19 +268,10 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
       } catch { /* non-fatal */ }
     }
 
-    const c = nativeCanvasRef.current;
-    const isFirstRegion = currentMask.regions.length === 0;
-    let maskVisualAnchor = currentMask.visualAnchor;
-    if (isFirstRegion && c) {
-      maskVisualAnchor = captureVisualAnchor(c, natural) ?? undefined;
-    }
-
-    const regionVisualAnchor = c ? captureVisualAnchor(c, natural) ?? undefined : undefined;
-
-    const naturalWithOffset: MaskRegion = { ...natural, anchorRelativeOffset, visualAnchor: regionVisualAnchor };
+    const naturalWithOffset: MaskRegion = { ...natural, anchorRelativeOffset };
     const updated = masks.map((m, idx) => {
       if (idx !== activeMaskIdx) return m;
-      return { ...m, regions: [...m.regions, naturalWithOffset], visualAnchor: maskVisualAnchor };
+      return { ...m, regions: [...m.regions, naturalWithOffset] };
     });
     onMasksChange(updated);
   };
@@ -535,8 +539,24 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
           )}
 
           {!activeMask.autoDetect && (
-            <div className="flex items-center gap-1.5 text-font/40 text-xs">
-              <Move size={12} /> Draw to add a region — multiple allowed
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 text-font/40 text-xs">
+                <Move size={12} />
+                <span>{drawMode === 'region' ? 'Draw to add a region — multiple allowed' : 'Draw to select anchor region'}</span>
+              </div>
+              {activeMask.regions.length > 0 && (
+                <button
+                  onClick={() => setDrawMode(drawMode === 'region' ? 'anchor' : 'region')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    drawMode === 'anchor'
+                      ? 'bg-teal-500/20 border border-teal-500/40 text-teal-300'
+                      : 'bg-white/8 hover:bg-white/12 text-font/60 border border-white/8'
+                  }`}
+                >
+                  <Crosshair size={12} />
+                  {drawMode === 'anchor' ? 'Drawing anchor...' : 'Set visual anchor'}
+                </button>
+              )}
             </div>
           )}
 
@@ -659,16 +679,36 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
             <div className="flex items-start gap-2 text-xs bg-teal-500/10 border border-teal-500/20 rounded-lg px-3 py-2.5 text-teal-300">
               <Crosshair size={13} className="shrink-0 mt-0.5" />
               <div className="flex-1">
-                <span className="font-semibold">Visual anchor captured</span>
+                <span className="font-semibold">Visual anchor set</span>
                 <span className="text-teal-400/70 ml-1">
-                  — a distinctive visual region will locate the correct position on new documents, even on scanned PDFs.
+                  — this region will be matched on new documents to locate the signature position.
                 </span>
               </div>
               <img
                 src={activeMask.visualAnchor.patchDataUrl}
                 alt="Anchor patch"
-                className="w-12 h-12 rounded border border-teal-500/30 object-cover shrink-0"
+                className="w-14 h-14 rounded border border-teal-500/30 object-cover shrink-0"
               />
+              <button
+                onClick={() => {
+                  const updated = masks.map((m, idx) => idx !== activeMaskIdx ? m : { ...m, visualAnchor: undefined });
+                  onMasksChange(updated);
+                }}
+                className="text-teal-400/60 hover:text-red-400 transition-colors p-1"
+                title="Remove anchor"
+              >
+                <RotateCcw size={12} />
+              </button>
+            </div>
+          )}
+
+          {drawMode === 'anchor' && !activeMask.visualAnchor && activeMask.regions.length > 0 && (
+            <div className="flex items-start gap-2 text-xs bg-teal-500/10 border border-teal-500/20 rounded-lg px-3 py-2.5 text-teal-300 animate-pulse">
+              <Crosshair size={13} className="shrink-0 mt-0.5" />
+              <span>
+                Draw a rectangle around a <strong>fixed visual landmark</strong> near the signature (e.g. a box corner, logo, or printed label).
+                Avoid text that changes between documents.
+              </span>
             </div>
           )}
 
@@ -697,13 +737,18 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
                   ref={overlayRef}
                   width={canvasState.displayW}
                   height={canvasState.displayH}
-                  className={`absolute inset-0 ${activeMask.autoDetect ? 'cursor-not-allowed' : 'cursor-crosshair'}`}
+                  className={`absolute inset-0 ${activeMask.autoDetect ? 'cursor-not-allowed' : drawMode === 'anchor' ? 'cursor-cell' : 'cursor-crosshair'}`}
                   style={{ width: canvasState.displayW, height: canvasState.displayH }}
                   onMouseDown={handleMouseDown}
                   onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
                   onMouseLeave={() => { setDrawing(false); setLiveRect(null); }}
                 />
+                {drawMode === 'anchor' && !activeMask.autoDetect && (
+                  <div className="absolute top-2 left-2 bg-teal-600/90 text-white text-xs font-bold px-2.5 py-1 rounded-md flex items-center gap-1.5 pointer-events-none">
+                    <Crosshair size={11} /> ANCHOR MODE
+                  </div>
+                )}
                 {activeMask.autoDetect && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="bg-emerald-500/20 border border-emerald-500/40 rounded-xl px-4 py-2 flex items-center gap-2">
