@@ -48,6 +48,15 @@ interface Props {
   onNavigate: (view: AppView) => void;
 }
 
+function isLightColor(hex: string): boolean {
+  const c = hex.replace('#', '');
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5;
+}
+
 export default function Sidebar({ currentView, onNavigate }: Props) {
   const { user, signOut } = useAuth();
   const { theme } = useTheme();
@@ -56,14 +65,22 @@ export default function Sidebar({ currentView, onNavigate }: Props) {
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
   const initials = displayName.slice(0, 2).toUpperCase();
 
+  const isLight = isLightColor(theme.surfaceColor || '#ffffff');
+  const dividerColor = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)';
+  const hoverBg = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.06)';
+  const userCardBg = isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)';
+
   return (
     <aside
-      className="fixed left-0 top-0 h-full w-60 flex flex-col z-40 border-r border-white/8"
-      style={{ backgroundColor: theme.surfaceColor }}
+      className="fixed left-0 top-0 h-full w-60 flex flex-col z-40"
+      style={{
+        backgroundColor: theme.surfaceColor,
+        borderRight: `1px solid ${dividerColor}`,
+      }}
     >
       <div
-        className="px-5 py-5 border-b border-white/8 flex items-center gap-3 shrink-0"
-        style={{ borderBottomColor: 'rgba(255,255,255,0.07)' }}
+        className="px-5 py-5 flex items-center gap-3 shrink-0"
+        style={{ borderBottom: `1px solid ${dividerColor}` }}
       >
         {theme.logoUrl ? (
           <img src={theme.logoUrl} alt="Logo" className="h-8 w-auto object-contain" />
@@ -114,7 +131,7 @@ export default function Sidebar({ currentView, onNavigate }: Props) {
                       onMouseEnter={e => {
                         if (!active) {
                           (e.currentTarget as HTMLButtonElement).style.opacity = '1';
-                          (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(255,255,255,0.06)';
+                          (e.currentTarget as HTMLButtonElement).style.backgroundColor = hoverBg;
                         }
                       }}
                       onMouseLeave={e => {
@@ -137,12 +154,12 @@ export default function Sidebar({ currentView, onNavigate }: Props) {
       </nav>
 
       <div
-        className="px-2 py-3 border-t shrink-0"
-        style={{ borderTopColor: 'rgba(255,255,255,0.07)' }}
+        className="px-2 py-3 shrink-0"
+        style={{ borderTop: `1px solid ${dividerColor}` }}
       >
         <div
           className="flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1"
-          style={{ backgroundColor: 'rgba(255,255,255,0.04)' }}
+          style={{ backgroundColor: userCardBg }}
         >
           <div
             className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0"
@@ -162,10 +179,10 @@ export default function Sidebar({ currentView, onNavigate }: Props) {
         <button
           onClick={signOut}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors"
-          style={{ color: '#f87171', opacity: 0.8 }}
+          style={{ color: '#dc2626', opacity: 0.8 }}
           onMouseEnter={e => {
             (e.currentTarget as HTMLButtonElement).style.opacity = '1';
-            (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(248,113,113,0.1)';
+            (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(220,38,38,0.1)';
           }}
           onMouseLeave={e => {
             (e.currentTarget as HTMLButtonElement).style.opacity = '0.8';

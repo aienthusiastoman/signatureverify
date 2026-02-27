@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Users, Plus, UserCheck, UserX, Trash2, Loader2, AlertCircle, CheckCircle, X, ShieldCheck, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface ManagedUser {
   id: string;
@@ -22,6 +23,7 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 export default function CustomerManagementPage() {
+  const { theme } = useTheme();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
@@ -132,17 +134,21 @@ export default function CustomerManagementPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-theme/15 border border-theme/30 rounded-xl flex items-center justify-center">
-            <Users size={18} className="text-theme" />
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ backgroundColor: theme.themeColor + '22', border: `1px solid ${theme.themeColor}33` }}
+          >
+            <Users size={18} style={{ color: theme.themeColor }} />
           </div>
           <div>
-            <h1 className="text-font text-xl font-black">Customers</h1>
-            <p className="text-font/50 text-sm font-light">Manage user accounts and access</p>
+            <h1 className="text-xl font-black" style={{ color: theme.fontColor }}>Customers</h1>
+            <p className="text-sm font-light" style={{ color: theme.fontColor, opacity: 0.5 }}>Manage user accounts and access</p>
           </div>
         </div>
         <button
           onClick={() => setShowCreate(p => !p)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-theme hover:opacity-90 text-white text-sm font-semibold rounded-xl transition-opacity shadow-lg"
+          className="flex items-center gap-2 px-4 py-2.5 text-white text-sm font-semibold rounded-xl transition-opacity shadow-lg hover:opacity-90"
+          style={{ backgroundColor: theme.themeColor }}
         >
           <Plus size={15} /> New User
         </button>
@@ -151,8 +157,8 @@ export default function CustomerManagementPage() {
       {(error || success) && (
         <div className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium ${
           error
-            ? 'bg-red-500/10 border border-red-500/30 text-red-400'
-            : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+            ? 'bg-red-500/10 border border-red-500/30 text-red-500'
+            : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-600'
         }`}>
           {error ? <AlertCircle size={15} /> : <CheckCircle size={15} />}
           {error || success}
@@ -160,47 +166,77 @@ export default function CustomerManagementPage() {
       )}
 
       {showCreate && (
-        <div className="bg-surface border border-theme/30 rounded-2xl p-5 space-y-4">
+        <div
+          className="rounded-2xl p-5 space-y-4"
+          style={{
+            backgroundColor: theme.surfaceColor,
+            border: `1px solid ${theme.themeColor}33`,
+          }}
+        >
           <div className="flex items-center justify-between">
-            <h2 className="text-font font-bold text-sm">Create New User</h2>
-            <button onClick={() => setShowCreate(false)} className="text-font/40 hover:text-font transition-colors">
+            <h2 className="font-bold text-sm" style={{ color: theme.fontColor }}>Create New User</h2>
+            <button
+              onClick={() => setShowCreate(false)}
+              className="transition-opacity hover:opacity-100"
+              style={{ color: theme.fontColor, opacity: 0.4 }}
+            >
               <X size={16} />
             </button>
           </div>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-font/50 text-xs font-semibold">Email</label>
+              <label className="text-xs font-semibold" style={{ color: theme.fontColor, opacity: 0.5 }}>Email</label>
               <input
                 type="email"
                 value={newEmail}
                 onChange={e => setNewEmail(e.target.value)}
                 placeholder="user@example.com"
-                className="w-full bg-black/20 border border-white/10 focus:border-theme/60 text-font text-sm rounded-xl px-4 py-3 outline-none transition-colors placeholder:text-font/25"
+                className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-colors"
+                style={{
+                  backgroundColor: 'var(--input-bg)',
+                  border: '1px solid var(--input-border)',
+                  color: theme.fontColor,
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = theme.themeColor + '80'; }}
+                onBlur={e => { e.currentTarget.style.borderColor = 'var(--input-border)'; }}
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-font/50 text-xs font-semibold">Password</label>
+              <label className="text-xs font-semibold" style={{ color: theme.fontColor, opacity: 0.5 }}>Password</label>
               <input
                 type="password"
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
                 placeholder="Min 6 characters"
-                className="w-full bg-black/20 border border-white/10 focus:border-theme/60 text-font text-sm rounded-xl px-4 py-3 outline-none transition-colors placeholder:text-font/25"
+                className="w-full rounded-xl px-4 py-3 text-sm outline-none transition-colors"
+                style={{
+                  backgroundColor: 'var(--input-bg)',
+                  border: '1px solid var(--input-border)',
+                  color: theme.fontColor,
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = theme.themeColor + '80'; }}
+                onBlur={e => { e.currentTarget.style.borderColor = 'var(--input-border)'; }}
               />
             </div>
           </div>
           <div className="space-y-1.5">
-            <label className="text-font/50 text-xs font-semibold">Role</label>
+            <label className="text-xs font-semibold" style={{ color: theme.fontColor, opacity: 0.5 }}>Role</label>
             <div className="flex gap-3">
               {(['user', 'admin'] as const).map(r => (
                 <button
                   key={r}
                   onClick={() => setNewRole(r)}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all ${
-                    newRole === r
-                      ? 'bg-theme/15 border-theme/40 text-theme'
-                      : 'bg-black/10 border-white/10 text-font/50 hover:border-white/20'
-                  }`}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all"
+                  style={newRole === r ? {
+                    backgroundColor: theme.themeColor + '18',
+                    borderColor: theme.themeColor + '50',
+                    color: theme.themeColor,
+                  } : {
+                    backgroundColor: 'var(--input-bg)',
+                    borderColor: 'var(--input-border)',
+                    color: theme.fontColor,
+                    opacity: 0.6,
+                  }}
                 >
                   {r === 'admin' ? <ShieldCheck size={14} /> : <User size={14} />}
                   {r.charAt(0).toUpperCase() + r.slice(1)}
@@ -211,30 +247,37 @@ export default function CustomerManagementPage() {
           <button
             onClick={createUser}
             disabled={creating || !newEmail.trim() || !newPassword.trim()}
-            className="flex items-center gap-2 px-5 py-2.5 bg-theme hover:opacity-90 disabled:opacity-40 text-white text-sm font-bold rounded-xl transition-opacity"
+            className="flex items-center gap-2 px-5 py-2.5 text-white text-sm font-bold rounded-xl transition-opacity hover:opacity-90 disabled:opacity-40"
+            style={{ backgroundColor: theme.themeColor }}
           >
             {creating ? <><Loader2 size={14} className="animate-spin" /> Creating...</> : <><Plus size={14} /> Create User</>}
           </button>
         </div>
       )}
 
-      <div className="bg-surface border border-white/8 rounded-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-white/8 flex items-center justify-between">
-          <h2 className="text-font font-bold text-sm">All Users</h2>
-          <span className="text-font/35 text-xs">{users.length} total</span>
+      <div
+        className="rounded-2xl overflow-hidden"
+        style={{ backgroundColor: theme.surfaceColor, border: '1px solid var(--divider-color)' }}
+      >
+        <div
+          className="px-5 py-4 flex items-center justify-between"
+          style={{ borderBottom: '1px solid var(--divider-color)' }}
+        >
+          <h2 className="font-bold text-sm" style={{ color: theme.fontColor }}>All Users</h2>
+          <span className="text-xs" style={{ color: theme.fontColor, opacity: 0.35 }}>{users.length} total</span>
         </div>
 
         {loading && (
           <div className="py-16 flex flex-col items-center gap-3">
-            <Loader2 size={24} className="animate-spin text-theme" />
-            <p className="text-font/40 text-sm">Loading users...</p>
+            <Loader2 size={24} className="animate-spin" style={{ color: theme.themeColor }} />
+            <p className="text-sm" style={{ color: theme.fontColor, opacity: 0.4 }}>Loading users...</p>
           </div>
         )}
 
         {!loading && users.length === 0 && (
           <div className="py-16 text-center">
-            <Users size={32} className="text-font/15 mx-auto mb-3" />
-            <p className="text-font/50 font-medium">No users found</p>
+            <Users size={32} className="mx-auto mb-3" style={{ color: theme.fontColor, opacity: 0.15 }} />
+            <p className="font-medium" style={{ color: theme.fontColor, opacity: 0.5 }}>No users found</p>
           </div>
         )}
 
@@ -246,45 +289,54 @@ export default function CustomerManagementPage() {
           return (
             <div
               key={u.id}
-              className="flex items-center gap-4 px-5 py-4 border-b border-white/6 last:border-0 hover:bg-white/[0.02] transition-colors"
+              className="flex items-center gap-4 px-5 py-4 transition-colors"
+              style={{ borderBottom: '1px solid var(--divider-color)' }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--card-hover)')}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
             >
               <div
-                className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black shrink-0 ${
-                  active ? 'bg-theme/15 text-theme' : 'bg-white/8 text-font/35'
-                }`}
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black shrink-0"
+                style={active
+                  ? { backgroundColor: theme.themeColor + '20', color: theme.themeColor }
+                  : { backgroundColor: 'var(--badge-bg)', color: theme.fontColor, opacity: 0.35 }
+                }
               >
                 {(u.email?.[0] ?? '?').toUpperCase()}
               </div>
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-font text-sm font-semibold truncate">{u.email}</p>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    role === 'admin'
-                      ? 'bg-amber-500/15 text-amber-400'
-                      : 'bg-white/8 text-font/40'
-                  }`}>
+                  <p className="text-sm font-semibold truncate" style={{ color: theme.fontColor }}>{u.email}</p>
+                  <span
+                    className="text-xs px-2 py-0.5 rounded-full font-medium"
+                    style={role === 'admin'
+                      ? { backgroundColor: 'rgba(245,158,11,0.12)', color: '#d97706' }
+                      : { backgroundColor: 'var(--badge-bg)', color: theme.fontColor, opacity: 0.5 }
+                    }
+                  >
                     {role}
                   </span>
                 </div>
-                <p className="text-font/30 text-xs mt-0.5">
+                <p className="text-xs mt-0.5" style={{ color: theme.fontColor, opacity: 0.3 }}>
                   Created {new Date(u.created_at).toLocaleDateString()}
                   {u.last_sign_in_at && ` · Last login ${new Date(u.last_sign_in_at).toLocaleDateString()}`}
                 </p>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
-                <span className={`hidden sm:block text-xs px-2.5 py-1 rounded-full font-semibold ${
-                  active
-                    ? 'bg-emerald-500/15 text-emerald-400'
-                    : 'bg-white/8 text-font/35'
-                }`}>
+                <span
+                  className="hidden sm:block text-xs px-2.5 py-1 rounded-full font-semibold"
+                  style={active
+                    ? { backgroundColor: 'rgba(16,185,129,0.12)', color: '#059669' }
+                    : { backgroundColor: 'var(--badge-bg)', color: theme.fontColor, opacity: 0.45 }
+                  }
+                >
                   {active ? 'Active' : 'Inactive'}
                 </span>
 
                 {isDeleting ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-red-400 font-medium">Confirm delete?</span>
+                    <span className="text-xs text-red-500 font-medium">Confirm delete?</span>
                     <button
                       onClick={() => deleteUser(u.id)}
                       className="px-3 py-1.5 bg-red-500 hover:bg-red-400 text-white text-xs font-semibold rounded-lg transition-colors"
@@ -293,7 +345,8 @@ export default function CustomerManagementPage() {
                     </button>
                     <button
                       onClick={() => setDeleteConfirm(null)}
-                      className="px-3 py-1.5 bg-white/10 hover:bg-white/15 text-font/60 text-xs rounded-lg transition-colors"
+                      className="px-3 py-1.5 text-xs rounded-lg transition-colors"
+                      style={{ backgroundColor: 'var(--badge-bg)', color: theme.fontColor, opacity: 0.7 }}
                     >
                       Cancel
                     </button>
@@ -304,11 +357,16 @@ export default function CustomerManagementPage() {
                       onClick={() => toggleActive(u)}
                       disabled={actionId === u.id}
                       title={active ? 'Deactivate' : 'Activate'}
-                      className={`p-2 rounded-lg transition-colors ${
-                        active
-                          ? 'hover:bg-amber-500/15 text-font/30 hover:text-amber-400'
-                          : 'hover:bg-emerald-500/15 text-font/30 hover:text-emerald-400'
-                      }`}
+                      className="p-2 rounded-lg transition-colors"
+                      style={{ color: theme.fontColor, opacity: 0.35 }}
+                      onMouseEnter={e => {
+                        (e.currentTarget as HTMLButtonElement).style.opacity = '1';
+                        (e.currentTarget as HTMLButtonElement).style.color = active ? '#d97706' : '#059669';
+                      }}
+                      onMouseLeave={e => {
+                        (e.currentTarget as HTMLButtonElement).style.opacity = '0.35';
+                        (e.currentTarget as HTMLButtonElement).style.color = theme.fontColor;
+                      }}
                     >
                       {actionId === u.id
                         ? <Loader2 size={15} className="animate-spin" />
@@ -317,7 +375,18 @@ export default function CustomerManagementPage() {
                     <button
                       onClick={() => setDeleteConfirm(u.id)}
                       title="Delete user"
-                      className="p-2 rounded-lg hover:bg-red-500/15 text-font/30 hover:text-red-400 transition-colors"
+                      className="p-2 rounded-lg transition-colors"
+                      style={{ color: theme.fontColor, opacity: 0.35 }}
+                      onMouseEnter={e => {
+                        (e.currentTarget as HTMLButtonElement).style.opacity = '1';
+                        (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(239,68,68,0.1)';
+                        (e.currentTarget as HTMLButtonElement).style.color = '#ef4444';
+                      }}
+                      onMouseLeave={e => {
+                        (e.currentTarget as HTMLButtonElement).style.opacity = '0.35';
+                        (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+                        (e.currentTarget as HTMLButtonElement).style.color = theme.fontColor;
+                      }}
                     >
                       <Trash2 size={15} />
                     </button>

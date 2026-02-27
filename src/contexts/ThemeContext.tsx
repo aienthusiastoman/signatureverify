@@ -18,10 +18,10 @@ export interface ColorSwatch {
 }
 
 const DEFAULTS: ThemeSettings = {
-  themeColor: '#14b8a6',
-  bgColor: '#020617',
-  surfaceColor: '#0f172a',
-  fontColor: '#f8fafc',
+  themeColor: '#006080',
+  bgColor: '#f8fafc',
+  surfaceColor: '#ffffff',
+  fontColor: '#0f172a',
   logoUrl: '',
   siteName: 'SignatureVerify',
 };
@@ -49,6 +49,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     root.style.setProperty('--bg-color', t.bgColor);
     root.style.setProperty('--surface-color', t.surfaceColor);
     root.style.setProperty('--font-color', t.fontColor);
+
+    const hex = t.surfaceColor.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    const isLight = lum > 0.5;
+
+    root.style.setProperty('--divider-color', isLight ? 'rgba(0,0,0,0.09)' : 'rgba(255,255,255,0.09)');
+    root.style.setProperty('--input-bg', isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)');
+    root.style.setProperty('--input-border', isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.12)');
+    root.style.setProperty('--card-hover', isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)');
+    root.style.setProperty('--badge-bg', isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.07)');
   };
 
   useEffect(() => {

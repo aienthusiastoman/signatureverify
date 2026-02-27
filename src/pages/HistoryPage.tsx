@@ -1,10 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
-import { History, FileText, Trash2, ExternalLink, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, Search, CheckSquare, Square, X } from 'lucide-react';
+import { History, FileText, Trash2, ExternalLink, AlertCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, Search, CheckSquare, Square, X, Users, ChevronDown as ChevronDownSmall } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import type { VerificationJob } from '../types';
 
 const PAGE_SIZE = 20;
+const ADMIN_FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-users`;
+
+interface UserOption {
+  id: string;
+  email: string;
+}
 
 function ScoreBadge({ score }: { score: number | null }) {
   if (score === null) return <span className="text-slate-500 text-xs">—</span>;
@@ -35,6 +42,9 @@ function StatusBadge({ status }: { status: VerificationJob['status'] }) {
 
 export default function HistoryPage() {
   const { theme } = useTheme();
+  const { user } = useAuth();
+  const isAdmin = user?.app_metadata?.role === 'admin';
+
   const [jobs, setJobs] = useState<VerificationJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -48,6 +58,29 @@ export default function HistoryPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const [userOptions, setUserOptions] = useState<UserOption[]>([]);
+  const [viewingUserId, setViewingUserId] = useState<string | null>(null);
+  const [userPickerOpen, setUserPickerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(ADMIN_FN, {
+          headers: {
+            Authorization: `Bearer ${session?.access_token ?? ''}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setUserOptions((data.users ?? []).map((u: { id: string; email: string }) => ({ id: u.id, email: u.email })));
+        }
+      } catch { /* non-fatal */ }
+    })();
+  }, [isAdmin]);
+
   const fetchJobs = useCallback(async () => {
     setLoading(true);
     setSelectedIds(new Set());
@@ -57,6 +90,10 @@ export default function HistoryPage() {
         .select('*', { count: 'exact' })
         .order('created_at', { ascending: sortDir === 'asc' })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+      if (isAdmin && viewingUserId) {
+        query = query.eq('user_id', viewingUserId);
+      }
 
       if (search.trim()) {
         query = query.or(`file1_name.ilike.%${search.trim()}%,file2_name.ilike.%${search.trim()}%`);
@@ -70,7 +107,7 @@ export default function HistoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, sortDir, search]);
+  }, [page, sortDir, search, isAdmin, viewingUserId]);
 
   useEffect(() => { fetchJobs(); }, [fetchJobs]);
 
@@ -148,9 +185,11 @@ export default function HistoryPage() {
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
+  const viewingUser = viewingUserId ? userOptions.find(u => u.id === viewingUserId) : null;
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -164,10 +203,65 @@ export default function HistoryPage() {
             </h1>
             <p className="text-xs" style={{ color: theme.fontColor, opacity: 0.45 }}>
               {totalCount} record{totalCount !== 1 ? 's' : ''} total
+              {viewingUser && <span className="ml-1">— viewing <span style={{ color: theme.themeColor }}>{viewingUser.email}</span></span>}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {isAdmin && (
+            <div className="relative">
+              <button
+                onClick={() => setUserPickerOpen(p => !p)}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors border"
+                style={{
+                  backgroundColor: viewingUserId ? theme.themeColor + '18' : 'rgba(255,255,255,0.06)',
+                  borderColor: viewingUserId ? theme.themeColor + '40' : 'rgba(255,255,255,0.10)',
+                  color: viewingUserId ? theme.themeColor : theme.fontColor,
+                  opacity: viewingUserId ? 1 : 0.7,
+                }}
+              >
+                <Users size={12} />
+                {viewingUser ? viewingUser.email : 'All users'}
+                <ChevronDownSmall size={11} />
+              </button>
+
+              {userPickerOpen && (
+                <div
+                  className="absolute right-0 top-full mt-1.5 w-64 rounded-xl shadow-2xl z-50 border overflow-hidden"
+                  style={{ backgroundColor: theme.surfaceColor, borderColor: 'rgba(255,255,255,0.10)' }}
+                >
+                  <div className="p-1.5 space-y-0.5 max-h-64 overflow-y-auto">
+                    <button
+                      onClick={() => { setViewingUserId(null); setPage(0); setUserPickerOpen(false); }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors hover:bg-white/[0.06]"
+                      style={{
+                        color: !viewingUserId ? theme.themeColor : theme.fontColor,
+                        backgroundColor: !viewingUserId ? theme.themeColor + '18' : 'transparent',
+                      }}
+                    >
+                      All users (admin view)
+                    </button>
+                    {userOptions.map(u => (
+                      <button
+                        key={u.id}
+                        onClick={() => { setViewingUserId(u.id); setPage(0); setUserPickerOpen(false); }}
+                        className="w-full text-left px-3 py-2 rounded-lg text-xs transition-colors hover:bg-white/[0.06] truncate"
+                        style={{
+                          color: viewingUserId === u.id ? theme.themeColor : theme.fontColor,
+                          backgroundColor: viewingUserId === u.id ? theme.themeColor + '18' : 'transparent',
+                          opacity: viewingUserId === u.id ? 1 : 0.75,
+                        }}
+                      >
+                        {u.email}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {someSelected && (
             <button
               onClick={() => setConfirmBulk(true)}
@@ -188,6 +282,10 @@ export default function HistoryPage() {
           </button>
         </div>
       </div>
+
+      {userPickerOpen && (
+        <div className="fixed inset-0 z-40" onClick={() => setUserPickerOpen(false)} />
+      )}
 
       <div className="relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />

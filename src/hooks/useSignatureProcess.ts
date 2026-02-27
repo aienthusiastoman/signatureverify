@@ -56,10 +56,11 @@ export function useSignatureProcess() {
       formData.append('matched_page2', String(region2.mask.page ?? 1));
       formData.append('mode', mode);
 
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(EDGE_FN_URL, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
         body: formData,
       });
@@ -140,10 +141,11 @@ export function useSignatureProcess() {
       });
       formData.append('mask2_count', String(multiRegions.length));
 
+      const { data: { session: session2 } } = await supabase.auth.getSession();
       const response = await fetch(EDGE_FN_URL, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          Authorization: `Bearer ${session2?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
         body: formData,
       });

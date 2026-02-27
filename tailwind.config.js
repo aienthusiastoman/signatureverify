@@ -11,6 +11,11 @@ export default {
         page: 'var(--bg-color)',
         surface: 'var(--surface-color)',
         font: 'var(--font-color)',
+        divider: 'var(--divider-color)',
+        inputbg: 'var(--input-bg)',
+        inputborder: 'var(--input-border)',
+        cardhover: 'var(--card-hover)',
+        badgebg: 'var(--badge-bg)',
         teal: {
           50:  '#e6f4f7',
           100: '#b3dde6',

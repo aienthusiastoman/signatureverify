@@ -82,11 +82,13 @@ export default function MasksPage() {
       ? { x: firstMask2.regions[0].x, y: firstMask2.regions[0].y, width: firstMask2.regions[0].width, height: firstMask2.regions[0].height, page: firstMask2.page, anchorText: firstMask2.anchorText }
       : { x: 0, y: 0, width: 0, height: 0, page: firstMask2.page };
 
+    const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase.from('templates').insert({
       name: form.name.trim(),
       mask1: form.mask1,
       mask2: legacyMask2,
       masks2: form.masks2,
+      user_id: user?.id ?? null,
     });
     setSaving(false);
     if (error) {

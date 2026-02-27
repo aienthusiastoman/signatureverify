@@ -52,6 +52,8 @@ export default function TemplatePanel({ onLoad, mask1, mask2, masks2, showSave =
       insertPayload.masks2 = masks2;
     }
 
+    const { data: { user } } = await supabase.auth.getUser();
+    insertPayload.user_id = user?.id ?? null;
     const { error } = await supabase.from('templates').insert(insertPayload);
     if (error) {
       setSaveError('Failed to save template.');

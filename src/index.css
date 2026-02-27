@@ -4,10 +4,15 @@
 
 @layer base {
   :root {
-    --theme-color: #14b8a6;
-    --bg-color: #020617;
-    --surface-color: #0f172a;
-    --font-color: #f8fafc;
+    --theme-color: #006080;
+    --bg-color: #f8fafc;
+    --surface-color: #ffffff;
+    --font-color: #0f172a;
+    --divider-color: rgba(0,0,0,0.09);
+    --input-bg: rgba(0,0,0,0.04);
+    --input-border: rgba(0,0,0,0.12);
+    --card-hover: rgba(0,0,0,0.03);
+    --badge-bg: rgba(0,0,0,0.06);
   }
 
   html {

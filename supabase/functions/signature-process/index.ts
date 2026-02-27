@@ -1211,6 +1211,20 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const authHeader = req.headers.get("Authorization") || "";
+    let callerUserId: string | null = null;
+    if (authHeader.startsWith("Bearer ")) {
+      try {
+        const userClient = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_ANON_KEY")!,
+          { global: { headers: { Authorization: authHeader } } }
+        );
+        const { data: { user } } = await userClient.auth.getUser();
+        callerUserId = user?.id ?? null;
+      } catch { /* non-fatal */ }
+    }
+
     const contentType = req.headers.get("content-type") || "";
     let buf1: ArrayBuffer, buf2: ArrayBuffer;
     let file1Name: string, file2Name: string, file1Path: string, file2Path: string;
@@ -1275,6 +1289,7 @@ Deno.serve(async (req: Request) => {
         mask1: mask1Raw ? JSON.parse(mask1Raw) : null,
         mask2: mask2Raw ? JSON.parse(mask2Raw) : null,
         status: "processing",
+        user_id: callerUserId,
       })
       .select()
       .single();
