@@ -592,6 +592,20 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
               type="text"
               value={activeMask.anchorText ?? ''}
               onChange={e => handleAnchorChange(e.target.value)}
+              onBlur={async e => {
+                const text = e.target.value.trim();
+                if (!text || !isPdf || !activeMask || activeMask.regions.length === 0) return;
+                const anchorBounds = await findAnchorTextPixelBounds(file.file, selectedPage, text).catch(() => null);
+                if (!anchorBounds) return;
+                const updated = masks.map((m, idx) => idx !== activeMaskIdx ? m : {
+                  ...m,
+                  regions: m.regions.map(r => ({
+                    ...r,
+                    anchorRelativeOffset: { dx: r.x - anchorBounds.x, dy: r.y - anchorBounds.y },
+                  })),
+                });
+                onMasksChange(updated);
+              }}
               placeholder="e.g. SIGNATURE, Authorized Signatory (optional)"
               className="w-full bg-surface border border-white/10 focus:border-theme outline-none rounded-lg px-3 py-2 text-font text-sm placeholder:text-font/35 transition-colors"
             />
