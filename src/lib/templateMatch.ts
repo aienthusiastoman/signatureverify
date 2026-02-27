@@ -41,12 +41,27 @@ export function captureVisualAnchorFromRect(
     0, 0, anchorRect.width, anchorRect.height
   );
 
+  const cw = canvas.width;
+  const ch = canvas.height;
+
   return {
     patchDataUrl: patchCanvas.toDataURL('image/png'),
     patchRect: { ...anchorRect },
     offsetToMask: {
       dx: maskRect.x - anchorRect.x,
       dy: maskRect.y - anchorRect.y,
+    },
+    anchorFrac: {
+      x: anchorRect.x / cw,
+      y: anchorRect.y / ch,
+      w: anchorRect.width / cw,
+      h: anchorRect.height / ch,
+    },
+    maskFrac: {
+      x: maskRect.x / cw,
+      y: maskRect.y / ch,
+      w: maskRect.width / cw,
+      h: maskRect.height / ch,
     },
   };
 }
@@ -214,16 +229,41 @@ export async function findVisualAnchorOnCanvas(
   return { x: finalX, y: finalY, confidence: finalNcc };
 }
 
+export function resolveVisualAnchorByFraction(
+  canvas: HTMLCanvasElement,
+  anchor: VisualAnchor
+): { maskX: number; maskY: number } | null {
+  if (!anchor.maskFrac) return null;
+  const cw = canvas.width;
+  const ch = canvas.height;
+  return {
+    maskX: Math.round(anchor.maskFrac.x * cw),
+    maskY: Math.round(anchor.maskFrac.y * ch),
+  };
+}
+
 export async function resolveVisualAnchorPosition(
   canvas: HTMLCanvasElement,
   anchor: VisualAnchor
-): Promise<{ maskX: number; maskY: number; confidence: number } | null> {
-  const found = await findVisualAnchorOnCanvas(canvas, anchor);
-  if (!found) return null;
+): Promise<{ maskX: number; maskY: number; confidence: number }> {
+  const fracResult = resolveVisualAnchorByFraction(canvas, anchor);
+
+  const nccResult = await findVisualAnchorOnCanvas(canvas, anchor);
+  if (nccResult && nccResult.confidence >= 0.5) {
+    return {
+      maskX: Math.round(nccResult.x + anchor.offsetToMask.dx),
+      maskY: Math.round(nccResult.y + anchor.offsetToMask.dy),
+      confidence: nccResult.confidence,
+    };
+  }
+
+  if (fracResult) {
+    return { ...fracResult, confidence: 0.6 };
+  }
 
   return {
-    maskX: Math.round(found.x + anchor.offsetToMask.dx),
-    maskY: Math.round(found.y + anchor.offsetToMask.dy),
-    confidence: found.confidence,
+    maskX: anchor.patchRect.x + anchor.offsetToMask.dx,
+    maskY: anchor.patchRect.y + anchor.offsetToMask.dy,
+    confidence: 0.3,
   };
 }

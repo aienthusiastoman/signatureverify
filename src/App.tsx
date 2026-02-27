@@ -26,7 +26,7 @@ import { useSignatureProcess } from './hooks/useSignatureProcess';
 import {
   extractRegion, extractCompositeRegion, renderPdfPageToCanvas,
   findPageByAnchorText, findPageBySignatureBlob, findAnchorTextPixelBounds,
-  findPageByVisualAnchor, applyVisualAnchorToMask, applyVisualAnchorToRegions
+  findPageByVisualAnchor, applyVisualAnchorToRegions
 } from './lib/imageUtils';
 import { detectSignatureInRegionFiltered } from './lib/signatureDetect';
 import type {
@@ -236,12 +236,7 @@ function CompareToolContent() {
         const detected = detectSignatureInRegionFiltered(c1, resolvedMask1);
         resolvedMask1 = { ...resolvedMask1, ...detected };
       } else {
-        const vaAdjusted = await applyVisualAnchorToMask(c1, resolvedMask1);
-        if (vaAdjusted) {
-          resolvedMask1 = vaAdjusted;
-        } else {
-          resolvedMask1 = await applyAnchorOffsetToMask(file1, resolvedMask1, page1);
-        }
+        resolvedMask1 = await applyAnchorOffsetToMask(file1, resolvedMask1, page1);
       }
 
       const crop1 = extractRegion(c1, resolvedMask1);

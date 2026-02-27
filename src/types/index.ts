@@ -2,6 +2,8 @@ export interface VisualAnchor {
   patchDataUrl: string;
   patchRect: { x: number; y: number; width: number; height: number };
   offsetToMask: { dx: number; dy: number };
+  anchorFrac: { x: number; y: number; w: number; h: number };
+  maskFrac: { x: number; y: number; w: number; h: number };
 }
 
 export interface MaskRect {

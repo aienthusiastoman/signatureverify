@@ -703,7 +703,6 @@ export async function applyVisualAnchorToMask(
 ): Promise<MaskRect | null> {
   if (!mask.visualAnchor) return null;
   const result = await resolveVisualAnchorPosition(canvas, mask.visualAnchor);
-  if (!result || result.confidence < 0.4) return null;
   return {
     ...mask,
     x: Math.max(0, result.maskX),
@@ -726,11 +725,6 @@ export async function applyVisualAnchorToRegions(
     }
 
     const result = await resolveVisualAnchorPosition(canvas, anchor);
-    if (!result || result.confidence < 0.4) {
-      adjusted.push(r);
-      continue;
-    }
-
     adjusted.push({
       x: Math.max(0, result.maskX),
       y: Math.max(0, result.maskY),
