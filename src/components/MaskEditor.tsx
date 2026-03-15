@@ -1,8 +1,8 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Wand2, RotateCcw, Move, ChevronLeft, ChevronRight, FileText, ScanText, Scan, MapPin, Crosshair, ScanSearch, X, ChevronDown } from 'lucide-react';
-import type { MaskRect, UploadedFile, OcrLabelAnchor } from '../types';
+import type { MaskRect, UploadedFile } from '../types';
 import { autoDetectSignature } from '../lib/signatureDetect';
-import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds } from '../lib/imageUtils';
+import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds, computeOcrAnchorFromRect, findAnchorTextPixelBoundsOCR } from '../lib/imageUtils';
 import { captureVisualAnchorFromRect } from '../lib/templateMatch';
 
 type DrawMode = 'mask' | 'anchor';
@@ -35,7 +35,6 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
   const [drawMode, setDrawMode] = useState<DrawMode>('mask');
   const [showOcrAnchorPanel, setShowOcrAnchorPanel] = useState(false);
   const [ocrLabelInput, setOcrLabelInput] = useState('');
-  const [ocrDirection, setOcrDirection] = useState<OcrLabelAnchor['searchDirection']>('right-below');
 
   const isPdf = file.type === 'pdf';
   const autoDetect = mask?.autoDetect ?? false;
@@ -324,21 +323,29 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     onMaskChange({ ...mask, visualAnchor: undefined });
   };
 
-  const handleSetOcrAnchor = () => {
+  const [ocrAnchorComputing, setOcrAnchorComputing] = useState(false);
+  const [ocrAnchorError, setOcrAnchorError] = useState<string | null>(null);
+
+  const handleSetOcrAnchor = async () => {
     const label = ocrLabelInput.trim();
-    if (!label || !mask) return;
+    if (!label || !mask || mask.width <= 5) return;
     const c = canvasRef.current;
-    const cw = c ? c.width : 1;
-    const ch = c ? c.height : 1;
-    const ocrAnchor: OcrLabelAnchor = {
-      labelText: label,
-      searchDirection: ocrDirection,
-      searchRadiusFrac: 0.25,
-      maskWidthFrac: mask.width / cw,
-      maskHeightFrac: mask.height / ch,
-    };
-    onMaskChange({ ...mask, ocrLabelAnchor: ocrAnchor, visualAnchor: undefined });
-    setShowOcrAnchorPanel(false);
+    if (!c) return;
+    setOcrAnchorComputing(true);
+    setOcrAnchorError(null);
+    try {
+      const labelBounds = await findAnchorTextPixelBoundsOCR(c, label);
+      if (!labelBounds) {
+        setOcrAnchorError(`Could not find "${label}" in the document. Try a different label.`);
+        return;
+      }
+      const labelBbox = { x0: labelBounds.x, y0: labelBounds.y, x1: labelBounds.x + labelBounds.width, y1: labelBounds.y + labelBounds.height };
+      const ocrAnchor = computeOcrAnchorFromRect(labelBbox, { x: mask.x, y: mask.y, width: mask.width, height: mask.height }, label);
+      onMaskChange({ ...mask, ocrLabelAnchor: ocrAnchor, visualAnchor: undefined });
+      setShowOcrAnchorPanel(false);
+    } finally {
+      setOcrAnchorComputing(false);
+    }
   };
 
   const handleClearOcrAnchor = () => {
@@ -600,48 +607,47 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
       {!autoDetect && hasMask && !mask?.ocrLabelAnchor && (
         <div className="bg-black/20 border border-white/8 rounded-xl overflow-hidden">
           <button
-            onClick={() => setShowOcrAnchorPanel(p => !p)}
+            onClick={() => { setShowOcrAnchorPanel(p => !p); setOcrAnchorError(null); }}
             className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-font/50 hover:text-font/80 hover:bg-white/4 transition-colors"
           >
             <ScanSearch size={13} className="text-blue-400 shrink-0" />
             <span className="font-medium text-blue-300/80">Set OCR label anchor</span>
-            <span className="text-font/30 ml-1 flex-1 text-left">— reliable for scanned forms</span>
+            <span className="text-font/30 ml-1 flex-1 text-left">— scale-invariant, works on scans</span>
             <ChevronDown size={12} className={`transition-transform ${showOcrAnchorPanel ? 'rotate-180' : ''}`} />
           </button>
           {showOcrAnchorPanel && (
             <div className="px-3 pb-3 space-y-3 border-t border-white/6 pt-3">
               <p className="text-font/40 text-xs leading-relaxed">
-                Type a text label that appears near the signature box on the form (e.g. "Tenant Signature"). The system will use OCR to find it and extract the signature from that region on any document — even scanned ones with rotation or margin differences.
+                Draw your mask region first, then type a nearby text label (e.g. "Tenant Signature"). The system OCRs the current document to measure the label's character size, then computes the signature offset in <em>character-height units</em> — so it works at any scan scale or zoom.
               </p>
               <div className="space-y-2">
                 <input
                   type="text"
                   value={ocrLabelInput}
-                  onChange={e => setOcrLabelInput(e.target.value)}
+                  onChange={e => { setOcrLabelInput(e.target.value); setOcrAnchorError(null); }}
                   onKeyDown={e => e.key === 'Enter' && handleSetOcrAnchor()}
                   placeholder="e.g. Tenant Signature"
                   className="w-full bg-surface border border-white/10 focus:border-blue-500/60 outline-none rounded-lg px-3 py-2 text-font text-sm placeholder:text-font/30 transition-colors"
                 />
-                <div className="flex items-center gap-2">
-                  <span className="text-font/40 text-xs shrink-0">Signature is</span>
-                  <select
-                    value={ocrDirection}
-                    onChange={e => setOcrDirection(e.target.value as OcrLabelAnchor['searchDirection'])}
-                    className="flex-1 bg-surface border border-white/10 focus:border-blue-500/60 outline-none rounded-lg px-2 py-1.5 text-font text-xs"
-                  >
-                    <option value="right">to the right of the label</option>
-                    <option value="below">below the label</option>
-                    <option value="right-below">to the right and below the label</option>
-                  </select>
-                </div>
+                {ocrAnchorError && (
+                  <p className="text-amber-400 text-xs flex items-start gap-1.5">
+                    <span className="shrink-0 mt-0.5">⚠</span>{ocrAnchorError}
+                  </p>
+                )}
                 <button
                   onClick={handleSetOcrAnchor}
-                  disabled={!ocrLabelInput.trim()}
+                  disabled={!ocrLabelInput.trim() || ocrAnchorComputing || mask.width <= 5}
                   className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium rounded-lg transition-colors"
                 >
-                  <ScanSearch size={12} />
-                  Set OCR label anchor
+                  {ocrAnchorComputing ? (
+                    <><span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Scanning label position...</>
+                  ) : (
+                    <><ScanSearch size={12} /> Calibrate OCR anchor</>
+                  )}
                 </button>
+                {mask.width <= 5 && (
+                  <p className="text-font/35 text-xs">Draw a mask region first before calibrating.</p>
+                )}
               </div>
             </div>
           )}

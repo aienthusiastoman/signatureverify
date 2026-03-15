@@ -8,10 +8,10 @@ export interface VisualAnchor {
 
 export interface OcrLabelAnchor {
   labelText: string;
-  searchDirection: 'right' | 'below' | 'right-below';
-  searchRadiusFrac: number;
-  maskWidthFrac: number;
-  maskHeightFrac: number;
+  offsetDxChars: number;
+  offsetDyChars: number;
+  widthChars: number;
+  heightChars: number;
 }
 
 export interface MaskRect {
