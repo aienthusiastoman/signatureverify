@@ -360,22 +360,65 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
   const handleSetOcrAnchor = async () => {
     const label = ocrLabelInput.trim();
     if (!label || !mask || mask.width <= 5) return;
-    const c = canvasRef.current;
-    if (!c) return;
     setOcrAnchorComputing(true);
     setOcrAnchorError(null);
     try {
-      const labelBounds = await findAnchorTextPixelBoundsOCR(c, label);
-      if (!labelBounds) {
-        setOcrAnchorError(`Could not find "${label}" — see nearby words below and click one to use it.`);
-        if (ocrNearbyWords.length === 0) {
-          setOcrNearbyScanning(true);
-          const words = await getOcrWordsNearRegion(c, { x: mask.x, y: mask.y, width: mask.width, height: mask.height });
-          setOcrNearbyWords(words);
-          setOcrNearbyScanning(false);
+      let labelBounds: { x: number; y: number; width: number; height: number } | null = null;
+
+      if (isPdf && file.file) {
+        const allWords = await getPdfTextLayerWords(file.file, selectedPage);
+        const search = label.toLowerCase().replace(/[:\s]+/g, ' ').replace(/[^a-z0-9 ]/g, '').trim();
+        for (let start = 0; start < allWords.length; start++) {
+          let combined = '';
+          for (let end = start; end < Math.min(start + 8, allWords.length); end++) {
+            const norm = allWords[end].text.toLowerCase().replace(/[:\s]+/g, ' ').replace(/[^a-z0-9 ]/g, '').trim();
+            combined += ' ' + norm;
+            if (combined.trim().includes(search)) {
+              const s = allWords[start];
+              const e2 = allWords[end];
+              labelBounds = {
+                x: Math.min(s.x, e2.x),
+                y: Math.min(s.y, e2.y),
+                width: Math.max(s.x + s.width, e2.x + e2.width) - Math.min(s.x, e2.x),
+                height: Math.max(s.height, e2.height),
+              };
+              break;
+            }
+            if (combined.length > search.length * 5) break;
+          }
+          if (labelBounds) break;
         }
-        return;
+
+        if (!labelBounds) {
+          setOcrAnchorError(`Could not find "${label}" in PDF text. Try one of the nearby words below.`);
+          const pad = Math.max(mask.height * 4, 100);
+          const nearbyWords = allWords
+            .filter(w => {
+              const cx = w.x + w.width / 2;
+              const cy = w.y + w.height / 2;
+              return cx >= mask.x - pad && cx <= mask.x + mask.width + pad &&
+                     cy >= mask.y - pad && cy <= mask.y + mask.height + pad;
+            })
+            .map(w => w.text);
+          setOcrNearbyWords(nearbyWords.length > 0 ? nearbyWords : allWords.map(w => w.text).slice(0, 30));
+          return;
+        }
+      } else {
+        const c = canvasRef.current;
+        if (!c) return;
+        labelBounds = await findAnchorTextPixelBoundsOCR(c, label);
+        if (!labelBounds) {
+          setOcrAnchorError(`Could not find "${label}" — see nearby words below and click one to use it.`);
+          if (ocrNearbyWords.length === 0) {
+            setOcrNearbyScanning(true);
+            const words = await getOcrWordsNearRegion(c, { x: mask.x, y: mask.y, width: mask.width, height: mask.height });
+            setOcrNearbyWords(words);
+            setOcrNearbyScanning(false);
+          }
+          return;
+        }
       }
+
       const labelBbox = { x0: labelBounds.x, y0: labelBounds.y, x1: labelBounds.x + labelBounds.width, y1: labelBounds.y + labelBounds.height };
       const ocrAnchor = computeOcrAnchorFromRect(labelBbox, { x: mask.x, y: mask.y, width: mask.width, height: mask.height }, label);
       onMaskChange({ ...mask, ocrLabelAnchor: ocrAnchor, visualAnchor: undefined });

@@ -65,6 +65,35 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
   const activeMask = masks[activeMaskIdx] ?? null;
   const selectedPage = activeMask?.page ?? 1;
 
+  const resolveOcrLabelBounds = async (label: string, page: number): Promise<{ x: number; y: number; width: number; height: number } | null> => {
+    if (isPdf && file.file) {
+      const normLabel = label.toLowerCase().replace(/[:\s]+/g, ' ').replace(/[^a-z0-9 ]/g, '').trim();
+      const allWords = await getPdfTextLayerWords(file.file, page);
+      for (let start = 0; start < allWords.length; start++) {
+        let combined = '';
+        for (let end = start; end < Math.min(start + 8, allWords.length); end++) {
+          const norm = allWords[end].text.toLowerCase().replace(/[:\s]+/g, ' ').replace(/[^a-z0-9 ]/g, '').trim();
+          combined += ' ' + norm;
+          if (combined.trim().includes(normLabel)) {
+            const s = allWords[start];
+            const e2 = allWords[end];
+            return {
+              x: Math.min(s.x, e2.x),
+              y: Math.min(s.y, e2.y),
+              width: Math.max(s.x + s.width, e2.x + e2.width) - Math.min(s.x, e2.x),
+              height: Math.max(s.height, e2.height),
+            };
+          }
+          if (combined.length > normLabel.length * 5) break;
+        }
+      }
+      return null;
+    }
+    const c = nativeCanvasRef.current;
+    if (!c) return null;
+    return findAnchorTextPixelBoundsOCR(c, label);
+  };
+
   useEffect(() => {
     const count = file.pageCount ?? 1;
     setPageCount(count);
@@ -810,13 +839,25 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
                       onChange={e => { setOcrLabelInput(e.target.value); setOcrAnchorError(null); }}
                       onKeyDown={async e => {
                         if (e.key === 'Enter' && ocrLabelInput.trim() && !ocrAnchorComputing) {
-                          const c = nativeCanvasRef.current;
-                          if (!c || !activeMask.regions.length) return;
+                          if (!activeMask.regions.length) return;
                           setOcrAnchorComputing(true);
                           setOcrAnchorError(null);
                           try {
-                            const lb = await findAnchorTextPixelBoundsOCR(c, ocrLabelInput.trim());
-                            if (!lb) { setOcrAnchorError(`Could not find "${ocrLabelInput.trim()}" in the document.`); return; }
+                            const lb = await resolveOcrLabelBounds(ocrLabelInput.trim(), selectedPage);
+                            if (!lb) {
+                              setOcrAnchorError(`Could not find "${ocrLabelInput.trim()}" in the document.`);
+                              if (isPdf && file.file) {
+                                const allWords = await getPdfTextLayerWords(file.file, selectedPage);
+                                const r = activeMask.regions[0];
+                                const pad = Math.max(r.height * 4, 100);
+                                const nearbyWords = allWords.filter(w => {
+                                  const cx = w.x + w.width / 2; const cy = w.y + w.height / 2;
+                                  return cx >= r.x - pad && cx <= r.x + r.width + pad && cy >= r.y - pad && cy <= r.y + r.height + pad;
+                                }).map(w => w.text);
+                                setOcrNearbyWords(nearbyWords.length > 0 ? nearbyWords : allWords.map(w => w.text).slice(0, 30));
+                              }
+                              return;
+                            }
                             const r = activeMask.regions[0];
                             const ocrAnchor = computeOcrAnchorFromRect({ x0: lb.x, y0: lb.y, x1: lb.x + lb.width, y1: lb.y + lb.height }, { x: r.x, y: r.y, width: r.width, height: r.height }, ocrLabelInput.trim());
                             const updated = masks.map((m, idx) => idx !== activeMaskIdx ? m : { ...m, ocrLabelAnchor: ocrAnchor, visualAnchor: undefined });
@@ -835,14 +876,25 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
                     )}
                     <button
                       onClick={async () => {
-                        if (!ocrLabelInput.trim() || ocrAnchorComputing) return;
-                        const c = nativeCanvasRef.current;
-                        if (!c || !activeMask.regions.length) return;
+                        if (!ocrLabelInput.trim() || ocrAnchorComputing || !activeMask.regions.length) return;
                         setOcrAnchorComputing(true);
                         setOcrAnchorError(null);
                         try {
-                          const lb = await findAnchorTextPixelBoundsOCR(c, ocrLabelInput.trim());
-                          if (!lb) { setOcrAnchorError(`Could not find "${ocrLabelInput.trim()}" in the document.`); return; }
+                          const lb = await resolveOcrLabelBounds(ocrLabelInput.trim(), selectedPage);
+                          if (!lb) {
+                            setOcrAnchorError(`Could not find "${ocrLabelInput.trim()}" in the document.`);
+                            if (isPdf && file.file) {
+                              const allWords = await getPdfTextLayerWords(file.file, selectedPage);
+                              const r = activeMask.regions[0];
+                              const pad = Math.max(r.height * 4, 100);
+                              const nearbyWords = allWords.filter(w => {
+                                const cx = w.x + w.width / 2; const cy = w.y + w.height / 2;
+                                return cx >= r.x - pad && cx <= r.x + r.width + pad && cy >= r.y - pad && cy <= r.y + r.height + pad;
+                              }).map(w => w.text);
+                              setOcrNearbyWords(nearbyWords.length > 0 ? nearbyWords : allWords.map(w => w.text).slice(0, 30));
+                            }
+                            return;
+                          }
                           const r = activeMask.regions[0];
                           const ocrAnchor = computeOcrAnchorFromRect({ x0: lb.x, y0: lb.y, x1: lb.x + lb.width, y1: lb.y + lb.height }, { x: r.x, y: r.y, width: r.width, height: r.height }, ocrLabelInput.trim());
                           const updated = masks.map((m, idx) => idx !== activeMaskIdx ? m : { ...m, ocrLabelAnchor: ocrAnchor, visualAnchor: undefined });
