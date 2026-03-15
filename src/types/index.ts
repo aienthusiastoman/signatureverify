@@ -6,6 +6,14 @@ export interface VisualAnchor {
   maskFrac: { x: number; y: number; w: number; h: number };
 }
 
+export interface OcrLabelAnchor {
+  labelText: string;
+  searchDirection: 'right' | 'below' | 'right-below';
+  searchRadiusFrac: number;
+  maskWidthFrac: number;
+  maskHeightFrac: number;
+}
+
 export interface MaskRect {
   x: number;
   y: number;
@@ -18,6 +26,7 @@ export interface MaskRect {
   autoDetect?: boolean;
   anchorRelativeOffset?: { dx: number; dy: number };
   visualAnchor?: VisualAnchor;
+  ocrLabelAnchor?: OcrLabelAnchor;
 }
 
 export interface MaskRegion {
@@ -27,6 +36,7 @@ export interface MaskRegion {
   height: number;
   anchorRelativeOffset?: { dx: number; dy: number };
   visualAnchor?: VisualAnchor;
+  ocrLabelAnchor?: OcrLabelAnchor;
 }
 
 export interface MaskDefinition {
@@ -41,6 +51,7 @@ export interface MaskDefinition {
   weight?: number;
   regionWeights?: number[];
   visualAnchor?: VisualAnchor;
+  ocrLabelAnchor?: OcrLabelAnchor;
 }
 
 export interface UploadedFile {

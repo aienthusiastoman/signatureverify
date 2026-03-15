@@ -1,4 +1,4 @@
-import type { MaskRect, VisualAnchor } from '../types';
+import type { MaskRect, VisualAnchor, OcrLabelAnchor } from '../types';
 import Tesseract from 'tesseract.js';
 import { findVisualAnchorOnCanvas, resolveVisualAnchorPosition } from './templateMatch';
 
@@ -731,6 +731,190 @@ export async function applyVisualAnchorToRegions(
       width: r.width,
       height: r.height,
     });
+  }
+
+  return adjusted;
+}
+
+export async function findRegionByOcrLabel(
+  canvas: HTMLCanvasElement,
+  ocrAnchor: OcrLabelAnchor
+): Promise<{ x: number; y: number; width: number; height: number } | null> {
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  const { data } = await Tesseract.recognize(canvas, 'eng');
+  const words = data.words ?? [];
+  const search = ocrAnchor.labelText.toLowerCase().trim();
+  const searchWords = search.split(/\s+/).filter(w => w.length > 0);
+
+  let labelBbox: { x0: number; y0: number; x1: number; y1: number } | null = null;
+
+  for (let i = 0; i < words.length; i++) {
+    let combined = '';
+    const firstBbox = words[i].bbox;
+    let lastBbox = words[i].bbox;
+    for (let j = i; j < Math.min(i + searchWords.length + 2, words.length); j++) {
+      combined += (combined ? ' ' : '') + words[j].text.toLowerCase().trim();
+      lastBbox = words[j].bbox;
+      if (combined.includes(search)) {
+        labelBbox = {
+          x0: Math.min(firstBbox.x0, lastBbox.x0),
+          y0: Math.min(firstBbox.y0, lastBbox.y0),
+          x1: Math.max(firstBbox.x1, lastBbox.x1),
+          y1: Math.max(firstBbox.y1, lastBbox.y1),
+        };
+        break;
+      }
+      if (combined.length > search.length * 4) break;
+    }
+    if (labelBbox) break;
+  }
+
+  if (!labelBbox) return null;
+
+  const labelCx = (labelBbox.x0 + labelBbox.x1) / 2;
+  const labelCy = (labelBbox.y0 + labelBbox.y1) / 2;
+  const searchR = ocrAnchor.searchRadiusFrac * Math.max(cw, ch);
+  const maskW = Math.round(ocrAnchor.maskWidthFrac * cw);
+  const maskH = Math.round(ocrAnchor.maskHeightFrac * ch);
+
+  let searchX: number, searchY: number, searchW: number, searchH: number;
+
+  if (ocrAnchor.searchDirection === 'right') {
+    searchX = labelBbox.x1;
+    searchY = labelCy - searchR * 0.5;
+    searchW = searchR;
+    searchH = searchR;
+  } else if (ocrAnchor.searchDirection === 'below') {
+    searchX = labelBbox.x0 - searchR * 0.25;
+    searchY = labelBbox.y1;
+    searchW = searchR * 1.5;
+    searchH = searchR;
+  } else {
+    searchX = labelBbox.x1;
+    searchY = labelCy - searchR * 0.25;
+    searchW = searchR * 1.5;
+    searchH = searchR;
+  }
+
+  searchX = Math.max(0, Math.round(searchX));
+  searchY = Math.max(0, Math.round(searchY));
+  searchW = Math.min(cw - searchX, Math.round(searchW));
+  searchH = Math.min(ch - searchY, Math.round(searchH));
+
+  if (searchW < 10 || searchH < 10) {
+    return { x: Math.max(0, Math.round(labelCx)), y: Math.max(0, Math.round(labelCy)), width: maskW, height: maskH };
+  }
+
+  const ctx = canvas.getContext('2d')!;
+  const imgData = ctx.getImageData(searchX, searchY, searchW, searchH);
+  const d = imgData.data;
+  const sw = imgData.width;
+  const sh = imgData.height;
+
+  const DASH_THRESHOLD = 140;
+  const MIN_RUN = Math.round(sw * 0.04);
+
+  const rowDashScore = new Float32Array(sh);
+  const colDashScore = new Float32Array(sw);
+
+  for (let y = 0; y < sh; y++) {
+    let run = 0;
+    let score = 0;
+    let prevDark = false;
+    for (let x = 0; x < sw; x++) {
+      const i = (y * sw + x) * 4;
+      const bright = (d[i] + d[i + 1] + d[i + 2]) / 3;
+      const dark = bright < DASH_THRESHOLD;
+      if (dark) {
+        run++;
+      } else {
+        if (run >= MIN_RUN && run <= sw * 0.4) score++;
+        if (prevDark && run > 0) score += 0.5;
+        run = 0;
+      }
+      prevDark = dark;
+    }
+    rowDashScore[y] = score;
+  }
+
+  for (let x = 0; x < sw; x++) {
+    let run = 0;
+    let score = 0;
+    for (let y = 0; y < sh; y++) {
+      const i = (y * sw + x) * 4;
+      const bright = (d[i] + d[i + 1] + d[i + 2]) / 3;
+      const dark = bright < DASH_THRESHOLD;
+      if (dark) {
+        run++;
+      } else {
+        if (run >= 2 && run <= sh * 0.4) score++;
+        run = 0;
+      }
+    }
+    colDashScore[x] = score;
+  }
+
+  const rowThreshold = 1.5;
+  const colThreshold = 1.0;
+
+  let topRow = -1, bottomRow = -1;
+  for (let y = 0; y < sh; y++) {
+    if (rowDashScore[y] >= rowThreshold) {
+      if (topRow < 0) topRow = y;
+      bottomRow = y;
+    }
+  }
+
+  let leftCol = -1, rightCol = -1;
+  for (let x = 0; x < sw; x++) {
+    if (colDashScore[x] >= colThreshold) {
+      if (leftCol < 0) leftCol = x;
+      rightCol = x;
+    }
+  }
+
+  if (topRow >= 0 && bottomRow > topRow + 5 && leftCol >= 0 && rightCol > leftCol + 5) {
+    const boxX = Math.max(0, searchX + leftCol);
+    const boxY = Math.max(0, searchY + topRow);
+    const boxW = Math.min(cw - boxX, rightCol - leftCol + 4);
+    const boxH = Math.min(ch - boxY, bottomRow - topRow + 4);
+    return { x: boxX, y: boxY, width: boxW, height: boxH };
+  }
+
+  return { x: searchX, y: searchY, width: maskW, height: maskH };
+}
+
+export async function applyOcrLabelAnchorToMask(
+  canvas: HTMLCanvasElement,
+  mask: MaskRect
+): Promise<MaskRect | null> {
+  if (!mask.ocrLabelAnchor) return null;
+  const region = await findRegionByOcrLabel(canvas, mask.ocrLabelAnchor);
+  if (!region) return null;
+  return { ...mask, x: region.x, y: region.y, width: region.width, height: region.height };
+}
+
+export async function applyOcrLabelAnchorToRegions(
+  canvas: HTMLCanvasElement,
+  regions: { x: number; y: number; width: number; height: number; ocrLabelAnchor?: OcrLabelAnchor }[],
+  maskLevelAnchor?: OcrLabelAnchor
+): Promise<{ x: number; y: number; width: number; height: number }[]> {
+  const adjusted: { x: number; y: number; width: number; height: number }[] = [];
+
+  for (const r of regions) {
+    const anchor = r.ocrLabelAnchor || maskLevelAnchor;
+    if (!anchor) {
+      adjusted.push(r);
+      continue;
+    }
+    const region = await findRegionByOcrLabel(canvas, anchor);
+    if (region) {
+      adjusted.push(region);
+    } else {
+      adjusted.push(r);
+    }
   }
 
   return adjusted;

@@ -26,7 +26,8 @@ import { useSignatureProcess } from './hooks/useSignatureProcess';
 import {
   extractRegion, extractCompositeRegion, renderPdfPageToCanvas,
   findPageByAnchorText, findPageBySignatureBlob, findAnchorTextPixelBounds,
-  findPageByVisualAnchor, applyVisualAnchorToRegions
+  findPageByVisualAnchor, applyVisualAnchorToRegions,
+  applyOcrLabelAnchorToMask, applyOcrLabelAnchorToRegions
 } from './lib/imageUtils';
 import { detectSignatureInRegionFiltered } from './lib/signatureDetect';
 import type {
@@ -235,6 +236,9 @@ function CompareToolContent() {
       if (resolvedMask1.autoDetect) {
         const detected = detectSignatureInRegionFiltered(c1, resolvedMask1);
         resolvedMask1 = { ...resolvedMask1, ...detected };
+      } else if (resolvedMask1.ocrLabelAnchor) {
+        const ocrAdjusted = await applyOcrLabelAnchorToMask(c1, resolvedMask1);
+        if (ocrAdjusted) resolvedMask1 = ocrAdjusted;
       } else {
         resolvedMask1 = await applyAnchorOffsetToMask(file1, resolvedMask1, page1);
       }
@@ -260,6 +264,8 @@ function CompareToolContent() {
           const pseudoMask: MaskRect = { x: 0, y: 0, width: c2.width, height: c2.height, page: resolvedPage, autoDetect: true };
           const detected = detectSignatureInRegionFiltered(c2, pseudoMask);
           effectiveRegions = [{ x: detected.x, y: detected.y, width: detected.width, height: detected.height }];
+        } else if (maskDef.ocrLabelAnchor || maskDef.regions.some(r => r.ocrLabelAnchor)) {
+          effectiveRegions = await applyOcrLabelAnchorToRegions(c2, maskDef.regions, maskDef.ocrLabelAnchor);
         } else {
           const vaRegions = await applyVisualAnchorToRegions(c2, maskDef.regions, maskDef.visualAnchor);
           const anyMoved = vaRegions.some((r, i) => r.x !== maskDef.regions[i].x || r.y !== maskDef.regions[i].y);
