@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { Wand2, RotateCcw, Move, ChevronLeft, ChevronRight, FileText, ScanText, Scan, MapPin, Crosshair, ScanSearch, X, ChevronDown } from 'lucide-react';
 import type { MaskRect, UploadedFile } from '../types';
 import { autoDetectSignature } from '../lib/signatureDetect';
-import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds, computeOcrAnchorFromRect, findAnchorTextPixelBoundsOCR, getOcrWordsNearRegion } from '../lib/imageUtils';
+import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds, computeOcrAnchorFromRect, findAnchorTextPixelBoundsOCR, getOcrWordsNearRegion, getPdfTextLayerWords } from '../lib/imageUtils';
 import { captureVisualAnchorFromRect } from '../lib/templateMatch';
 
 type DrawMode = 'mask' | 'anchor';
@@ -329,10 +329,27 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
   const [ocrNearbyScanning, setOcrNearbyScanning] = useState(false);
 
   const scanNearbyWords = async () => {
-    const c = canvasRef.current;
-    if (!c || !mask || mask.width <= 5) return;
+    if (!mask || mask.width <= 5) return;
     setOcrNearbyScanning(true);
     try {
+      if (isPdf && file.file) {
+        const allWords = await getPdfTextLayerWords(file.file, selectedPage);
+        const pad = Math.max(mask.height * 3, 60);
+        const nearby = allWords
+          .filter(w => {
+            const cx = w.x + w.width / 2;
+            const cy = w.y + w.height / 2;
+            return cx >= mask.x - pad && cx <= mask.x + mask.width + pad &&
+                   cy >= mask.y - pad && cy <= mask.y + mask.height + pad;
+          })
+          .map(w => w.text);
+        if (nearby.length > 0) {
+          setOcrNearbyWords(nearby);
+          return;
+        }
+      }
+      const c = canvasRef.current;
+      if (!c) return;
       const words = await getOcrWordsNearRegion(c, { x: mask.x, y: mask.y, width: mask.width, height: mask.height });
       setOcrNearbyWords(words);
     } finally {

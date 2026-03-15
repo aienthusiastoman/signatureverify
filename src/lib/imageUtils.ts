@@ -470,6 +470,10 @@ export async function findPageByAnchorText(
   return pickBestByInk(matchingPages);
 }
 
+function normalizePdfText(t: string): string {
+  return t.toLowerCase().replace(/[:\s]+/g, ' ').replace(/[^a-z0-9 ]/g, '').trim();
+}
+
 async function findAnchorTextPixelBoundsPdfTextLayer(
   file: File,
   pageNum: number,
@@ -479,38 +483,36 @@ async function findAnchorTextPixelBoundsPdfTextLayer(
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const page = await pdf.getPage(pageNum);
-  const viewport = page.getViewport({ scale: 2.0 });
+  const scale = 2.0;
+  const viewport = page.getViewport({ scale });
   const textContent = await page.getTextContent();
 
-  const search = anchorText.toLowerCase().trim();
+  const search = normalizePdfText(anchorText);
+  const searchWords = search.split(' ').filter(w => w.length > 1);
+
   const items = (textContent.items as any[]).filter(
-    (item: any) => typeof item.str === 'string' && item.str.trim()
+    (item: any) => typeof item.str === 'string' && item.str.trim().length > 0
   );
 
-  const toViewport = (x: number, y: number): [number, number] => {
-    const t = viewport.transform as number[];
-    return [t[0] * x + t[2] * y + t[4], t[1] * x + t[3] * y + t[5]];
-  };
-
   const itemBounds = (item: any): { x: number; y: number; width: number; height: number } => {
-    const [px, py] = toViewport(item.transform[4], item.transform[5]);
-    const w = Math.max(4, (item.width ?? 10) * viewport.scale);
-    const h = Math.max(4, (item.height ?? 10) * viewport.scale);
+    const tx = item.transform;
+    const pdfX = tx[4];
+    const pdfY = tx[5];
+    const vt = viewport.transform as number[];
+    const px = vt[0] * pdfX + vt[2] * pdfY + vt[4];
+    const py = vt[1] * pdfX + vt[3] * pdfY + vt[5];
+    const fontH = Math.abs(tx[3] ?? tx[0] ?? 10);
+    const h = Math.max(4, fontH * scale);
+    const w = Math.max(4, (item.width ?? 10) * scale);
     return { x: px, y: py - h, width: w, height: h };
   };
 
-  for (const item of items) {
-    const itemText = item.str.toLowerCase().trim();
-    if (itemText.length > 1 && (itemText.includes(search) || search.includes(itemText))) {
-      return itemBounds(item);
-    }
-  }
-
   for (let start = 0; start < items.length; start++) {
     let combined = '';
-    for (let end = start; end < Math.min(start + 8, items.length); end++) {
-      combined += items[end].str.toLowerCase();
-      if (combined.replace(/\s+/g, ' ').trim().includes(search)) {
+    for (let end = start; end < Math.min(start + 10, items.length); end++) {
+      combined += ' ' + normalizePdfText(items[end].str);
+      const trimmed = combined.trim();
+      if (trimmed.includes(search)) {
         const s = itemBounds(items[start]);
         const e2 = itemBounds(items[end]);
         return {
@@ -520,11 +522,62 @@ async function findAnchorTextPixelBoundsPdfTextLayer(
           height: Math.max(s.height, e2.height),
         };
       }
-      if (combined.length > search.length * 4) break;
+      if (combined.length > search.length * 5) break;
+    }
+  }
+
+  if (searchWords.length >= 2) {
+    for (let start = 0; start < items.length; start++) {
+      let combined = '';
+      let matchCount = 0;
+      for (let end = start; end < Math.min(start + 10, items.length); end++) {
+        const norm = normalizePdfText(items[end].str);
+        combined += ' ' + norm;
+        for (const sw of searchWords) {
+          if (norm.includes(sw)) matchCount++;
+        }
+        if (matchCount >= Math.ceil(searchWords.length * 0.7)) {
+          const s = itemBounds(items[start]);
+          const e2 = itemBounds(items[end]);
+          return {
+            x: Math.min(s.x, e2.x),
+            y: Math.min(s.y, e2.y),
+            width: Math.max(s.x + s.width, e2.x + e2.width) - Math.min(s.x, e2.x),
+            height: Math.max(s.height, e2.height),
+          };
+        }
+        if (combined.length > search.length * 5) break;
+      }
     }
   }
 
   return null;
+}
+
+export async function getPdfTextLayerWords(
+  file: File,
+  pageNum: number
+): Promise<{ text: string; x: number; y: number; width: number; height: number }[]> {
+  const pdfjsLib = getPdfjsLib();
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdf.getPage(pageNum);
+  const scale = 2.0;
+  const viewport = page.getViewport({ scale });
+  const textContent = await page.getTextContent();
+
+  return (textContent.items as any[])
+    .filter((item: any) => typeof item.str === 'string' && item.str.trim().length > 1)
+    .map((item: any) => {
+      const tx = item.transform;
+      const vt = viewport.transform as number[];
+      const px = vt[0] * tx[4] + vt[2] * tx[5] + vt[4];
+      const py = vt[1] * tx[4] + vt[3] * tx[5] + vt[5];
+      const fontH = Math.abs(tx[3] ?? tx[0] ?? 10);
+      const h = Math.max(4, fontH * scale);
+      const w = Math.max(4, (item.width ?? 10) * scale);
+      return { text: item.str.trim(), x: px, y: py - h, width: w, height: h };
+    });
 }
 
 function normalizeOcrText(t: string): string {

@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import type { MaskDefinition, MaskRegion, UploadedFile, OcrLabelAnchor } from '../types';
 import { autoDetectSignature } from '../lib/signatureDetect';
-import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds, computeOcrAnchorFromRect, findAnchorTextPixelBoundsOCR, getOcrWordsNearRegion } from '../lib/imageUtils';
+import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds, computeOcrAnchorFromRect, findAnchorTextPixelBoundsOCR, getOcrWordsNearRegion, getPdfTextLayerWords } from '../lib/imageUtils';
 import { captureVisualAnchorFromRect } from '../lib/templateMatch';
 
 let maskIdCounter = 0;
@@ -738,12 +738,33 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
                   setShowOcrAnchorPanel(next);
                   setOcrAnchorError(null);
                   if (next && activeMask?.regions.length && ocrNearbyWords.length === 0) {
-                    const c = nativeCanvasRef.current;
-                    if (c) {
-                      setOcrNearbyScanning(true);
-                      const r = activeMask.regions[0];
-                      const words = await getOcrWordsNearRegion(c, { x: r.x, y: r.y, width: r.width, height: r.height });
-                      setOcrNearbyWords(words);
+                    setOcrNearbyScanning(true);
+                    const r = activeMask.regions[0];
+                    const region = { x: r.x, y: r.y, width: r.width, height: r.height };
+                    try {
+                      if (isPdf && file.file) {
+                        const allWords = await getPdfTextLayerWords(file.file, selectedPage);
+                        const pad = Math.max(region.height * 3, 60);
+                        const nearby = allWords
+                          .filter(w => {
+                            const cx = w.x + w.width / 2;
+                            const cy = w.y + w.height / 2;
+                            return cx >= region.x - pad && cx <= region.x + region.width + pad &&
+                                   cy >= region.y - pad && cy <= region.y + region.height + pad;
+                          })
+                          .map(w => w.text);
+                        if (nearby.length > 0) {
+                          setOcrNearbyWords(nearby);
+                          setOcrNearbyScanning(false);
+                          return;
+                        }
+                      }
+                      const c = nativeCanvasRef.current;
+                      if (c) {
+                        const words = await getOcrWordsNearRegion(c, region);
+                        setOcrNearbyWords(words);
+                      }
+                    } finally {
                       setOcrNearbyScanning(false);
                     }
                   }
