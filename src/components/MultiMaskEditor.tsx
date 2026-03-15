@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import type { MaskDefinition, MaskRegion, UploadedFile, OcrLabelAnchor } from '../types';
 import { autoDetectSignature } from '../lib/signatureDetect';
-import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds, computeOcrAnchorFromRect, findAnchorTextPixelBoundsOCR } from '../lib/imageUtils';
+import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds, computeOcrAnchorFromRect, findAnchorTextPixelBoundsOCR, getOcrWordsNearRegion } from '../lib/imageUtils';
 import { captureVisualAnchorFromRect } from '../lib/templateMatch';
 
 let maskIdCounter = 0;
@@ -58,6 +58,8 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
   const [ocrLabelInput, setOcrLabelInput] = useState('');
   const [ocrAnchorComputing, setOcrAnchorComputing] = useState(false);
   const [ocrAnchorError, setOcrAnchorError] = useState<string | null>(null);
+  const [ocrNearbyWords, setOcrNearbyWords] = useState<string[]>([]);
+  const [ocrNearbyScanning, setOcrNearbyScanning] = useState(false);
 
   const isPdf = file.type === 'pdf';
   const activeMask = masks[activeMaskIdx] ?? null;
@@ -731,7 +733,21 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
           {!activeMask.autoDetect && activeMask.regions.length > 0 && !activeMask.ocrLabelAnchor && (
             <div className="bg-black/20 border border-white/8 rounded-xl overflow-hidden">
               <button
-                onClick={() => { setShowOcrAnchorPanel(p => !p); setOcrAnchorError(null); }}
+                onClick={async () => {
+                  const next = !showOcrAnchorPanel;
+                  setShowOcrAnchorPanel(next);
+                  setOcrAnchorError(null);
+                  if (next && activeMask?.regions.length && ocrNearbyWords.length === 0) {
+                    const c = nativeCanvasRef.current;
+                    if (c) {
+                      setOcrNearbyScanning(true);
+                      const r = activeMask.regions[0];
+                      const words = await getOcrWordsNearRegion(c, { x: r.x, y: r.y, width: r.width, height: r.height });
+                      setOcrNearbyWords(words);
+                      setOcrNearbyScanning(false);
+                    }
+                  }
+                }}
                 className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-font/50 hover:text-font/80 hover:bg-white/4 transition-colors"
               >
                 <ScanSearch size={13} className="text-blue-400 shrink-0" />
@@ -742,9 +758,31 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
               {showOcrAnchorPanel && (
                 <div className="px-3 pb-3 space-y-3 border-t border-white/6 pt-3">
                   <p className="text-font/40 text-xs leading-relaxed">
-                    Draw a region first, then type a nearby text label. The offset is stored in character-height units so it works at any scan scale or zoom.
+                    Draw a region first, then pick or type a nearby text label. Offset is stored in character-height units so it works at any scan scale.
                   </p>
                   <div className="space-y-2">
+                    {ocrNearbyScanning && (
+                      <div className="flex items-center gap-2 text-xs text-font/40">
+                        <span className="w-3 h-3 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                        Scanning nearby text...
+                      </div>
+                    )}
+                    {!ocrNearbyScanning && ocrNearbyWords.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-font/35 text-xs">Nearby text — click to use as anchor:</p>
+                        <div className="flex flex-wrap gap-1">
+                          {ocrNearbyWords.map((w, i) => (
+                            <button
+                              key={i}
+                              onClick={() => { setOcrLabelInput(w); setOcrAnchorError(null); }}
+                              className={`px-2 py-0.5 rounded text-xs border transition-colors ${ocrLabelInput === w ? 'bg-blue-600 border-blue-500 text-white' : 'bg-white/5 border-white/10 text-font/60 hover:bg-white/10 hover:text-font/80'}`}
+                            >
+                              {w}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <input
                       type="text"
                       value={ocrLabelInput}
@@ -766,7 +804,7 @@ export default function MultiMaskEditor({ file, masks, onMasksChange }: Props) {
                           } finally { setOcrAnchorComputing(false); }
                         }
                       }}
-                      placeholder="e.g. Tenant Signature"
+                      placeholder="or type a label manually"
                       className="w-full bg-surface border border-white/10 focus:border-blue-500/60 outline-none rounded-lg px-3 py-2 text-font text-sm placeholder:text-font/30 transition-colors"
                     />
                     {ocrAnchorError && (

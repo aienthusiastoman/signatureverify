@@ -527,45 +527,88 @@ async function findAnchorTextPixelBoundsPdfTextLayer(
   return null;
 }
 
+function normalizeOcrText(t: string): string {
+  return t.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+}
+
 export async function findAnchorTextPixelBoundsOCR(
   canvas: HTMLCanvasElement,
   anchorText: string
 ): Promise<{ x: number; y: number; width: number; height: number } | null> {
-  const search = anchorText.toLowerCase().trim();
-  const { data } = await Tesseract.recognize(canvas, 'eng');
-  const words = data.words ?? [];
+  const search = normalizeOcrText(anchorText);
+  const searchWords = search.split(/\s+/).filter(w => w.length > 1);
 
-  for (const word of words) {
-    const text = word.text.toLowerCase().trim();
-    if (text.length > 0 && (text.includes(search) || search.includes(text))) {
-      const b = word.bbox;
-      return { x: b.x0, y: b.y0, width: b.x1 - b.x0, height: b.y1 - b.y0 };
+  const { data } = await Tesseract.recognize(canvas, 'eng');
+  const words = (data.words ?? []).filter(w => w.text.trim().length > 0);
+
+  for (let i = 0; i < words.length; i++) {
+    let combined = '';
+    const firstBbox = words[i].bbox;
+    let lastBbox = firstBbox;
+    for (let j = i; j < Math.min(i + searchWords.length + 4, words.length); j++) {
+      const norm = normalizeOcrText(words[j].text);
+      if (norm.length === 0) continue;
+      combined += (combined ? ' ' : '') + norm;
+      lastBbox = words[j].bbox;
+      if (combined.includes(search)) {
+        return {
+          x: Math.min(firstBbox.x0, lastBbox.x0),
+          y: Math.min(firstBbox.y0, lastBbox.y0),
+          width: Math.max(firstBbox.x1, lastBbox.x1) - Math.min(firstBbox.x0, lastBbox.x0),
+          height: Math.max(firstBbox.y1, lastBbox.y1) - Math.min(firstBbox.y0, lastBbox.y0),
+        };
+      }
+      if (combined.length > search.length * 5) break;
     }
   }
 
-  const searchWords = search.split(/\s+/).filter(w => w.length > 0);
-  if (searchWords.length > 1) {
+  if (searchWords.length >= 2) {
     for (let i = 0; i < words.length; i++) {
       let combined = '';
-      let firstBbox = words[i].bbox;
-      let lastBbox = words[i].bbox;
-      for (let j = i; j < Math.min(i + searchWords.length + 2, words.length); j++) {
-        combined += (combined ? ' ' : '') + words[j].text.toLowerCase().trim();
+      const firstBbox = words[i].bbox;
+      let lastBbox = firstBbox;
+      let matchCount = 0;
+      for (let j = i; j < Math.min(i + searchWords.length + 4, words.length); j++) {
+        const norm = normalizeOcrText(words[j].text);
+        if (norm.length === 0) continue;
+        combined += (combined ? ' ' : '') + norm;
         lastBbox = words[j].bbox;
-        if (combined.includes(search)) {
-          return {
-            x: Math.min(firstBbox.x0, lastBbox.x0),
-            y: Math.min(firstBbox.y0, lastBbox.y0),
-            width: Math.max(firstBbox.x1, lastBbox.x1) - Math.min(firstBbox.x0, lastBbox.x0),
-            height: Math.max(firstBbox.y1, lastBbox.y1) - Math.min(firstBbox.y0, lastBbox.y0),
-          };
+        for (const sw of searchWords) {
+          if (norm.includes(sw) || sw.includes(norm)) matchCount++;
         }
-        if (combined.length > search.length * 3) break;
+      }
+      if (matchCount >= Math.ceil(searchWords.length * 0.6)) {
+        return {
+          x: Math.min(firstBbox.x0, lastBbox.x0),
+          y: Math.min(firstBbox.y0, lastBbox.y0),
+          width: Math.max(firstBbox.x1, lastBbox.x1) - Math.min(firstBbox.x0, lastBbox.x0),
+          height: Math.max(firstBbox.y1, lastBbox.y1) - Math.min(firstBbox.y0, lastBbox.y0),
+        };
       }
     }
   }
 
   return null;
+}
+
+export async function getOcrWordsNearRegion(
+  canvas: HTMLCanvasElement,
+  region: { x: number; y: number; width: number; height: number },
+  paddingFactor = 3
+): Promise<string[]> {
+  const { data } = await Tesseract.recognize(canvas, 'eng');
+  const words = data.words ?? [];
+  const pad = region.height * paddingFactor;
+  const rx0 = region.x - pad, ry0 = region.y - pad;
+  const rx1 = region.x + region.width + pad, ry1 = region.y + region.height + pad;
+  return words
+    .filter(w => {
+      const cx = (w.bbox.x0 + w.bbox.x1) / 2;
+      const cy = (w.bbox.y0 + w.bbox.y1) / 2;
+      return cx >= rx0 && cx <= rx1 && cy >= ry0 && cy <= ry1;
+    })
+    .map(w => w.text.trim())
+    .filter(t => t.length > 1);
 }
 
 export async function findAnchorTextPixelBounds(

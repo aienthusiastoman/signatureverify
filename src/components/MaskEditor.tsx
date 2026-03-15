@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { Wand2, RotateCcw, Move, ChevronLeft, ChevronRight, FileText, ScanText, Scan, MapPin, Crosshair, ScanSearch, X, ChevronDown } from 'lucide-react';
 import type { MaskRect, UploadedFile } from '../types';
 import { autoDetectSignature } from '../lib/signatureDetect';
-import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds, computeOcrAnchorFromRect, findAnchorTextPixelBoundsOCR } from '../lib/imageUtils';
+import { renderPdfPageToCanvas, renderPdfThumbnail, captureStructuralThumbnail, findAnchorTextPixelBounds, computeOcrAnchorFromRect, findAnchorTextPixelBoundsOCR, getOcrWordsNearRegion } from '../lib/imageUtils';
 import { captureVisualAnchorFromRect } from '../lib/templateMatch';
 
 type DrawMode = 'mask' | 'anchor';
@@ -325,6 +325,20 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
 
   const [ocrAnchorComputing, setOcrAnchorComputing] = useState(false);
   const [ocrAnchorError, setOcrAnchorError] = useState<string | null>(null);
+  const [ocrNearbyWords, setOcrNearbyWords] = useState<string[]>([]);
+  const [ocrNearbyScanning, setOcrNearbyScanning] = useState(false);
+
+  const scanNearbyWords = async () => {
+    const c = canvasRef.current;
+    if (!c || !mask || mask.width <= 5) return;
+    setOcrNearbyScanning(true);
+    try {
+      const words = await getOcrWordsNearRegion(c, { x: mask.x, y: mask.y, width: mask.width, height: mask.height });
+      setOcrNearbyWords(words);
+    } finally {
+      setOcrNearbyScanning(false);
+    }
+  };
 
   const handleSetOcrAnchor = async () => {
     const label = ocrLabelInput.trim();
@@ -336,7 +350,13 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
     try {
       const labelBounds = await findAnchorTextPixelBoundsOCR(c, label);
       if (!labelBounds) {
-        setOcrAnchorError(`Could not find "${label}" in the document. Try a different label.`);
+        setOcrAnchorError(`Could not find "${label}" — see nearby words below and click one to use it.`);
+        if (ocrNearbyWords.length === 0) {
+          setOcrNearbyScanning(true);
+          const words = await getOcrWordsNearRegion(c, { x: mask.x, y: mask.y, width: mask.width, height: mask.height });
+          setOcrNearbyWords(words);
+          setOcrNearbyScanning(false);
+        }
         return;
       }
       const labelBbox = { x0: labelBounds.x, y0: labelBounds.y, x1: labelBounds.x + labelBounds.width, y1: labelBounds.y + labelBounds.height };
@@ -607,7 +627,14 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
       {!autoDetect && hasMask && !mask?.ocrLabelAnchor && (
         <div className="bg-black/20 border border-white/8 rounded-xl overflow-hidden">
           <button
-            onClick={() => { setShowOcrAnchorPanel(p => !p); setOcrAnchorError(null); }}
+            onClick={() => {
+              const next = !showOcrAnchorPanel;
+              setShowOcrAnchorPanel(next);
+              setOcrAnchorError(null);
+              if (next && mask && mask.width > 5 && ocrNearbyWords.length === 0) {
+                scanNearbyWords();
+              }
+            }}
             className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-font/50 hover:text-font/80 hover:bg-white/4 transition-colors"
           >
             <ScanSearch size={13} className="text-blue-400 shrink-0" />
@@ -618,37 +645,68 @@ export default function MaskEditor({ file, mask, onMaskChange, canvasRef, showAn
           {showOcrAnchorPanel && (
             <div className="px-3 pb-3 space-y-3 border-t border-white/6 pt-3">
               <p className="text-font/40 text-xs leading-relaxed">
-                Draw your mask region first, then type a nearby text label (e.g. "Tenant Signature"). The system OCRs the current document to measure the label's character size, then computes the signature offset in <em>character-height units</em> — so it works at any scan scale or zoom.
+                Draw your mask region first, then pick or type a nearby text label. The offset is stored in character-height units so it works at any scan scale.
               </p>
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  value={ocrLabelInput}
-                  onChange={e => { setOcrLabelInput(e.target.value); setOcrAnchorError(null); }}
-                  onKeyDown={e => e.key === 'Enter' && handleSetOcrAnchor()}
-                  placeholder="e.g. Tenant Signature"
-                  className="w-full bg-surface border border-white/10 focus:border-blue-500/60 outline-none rounded-lg px-3 py-2 text-font text-sm placeholder:text-font/30 transition-colors"
-                />
-                {ocrAnchorError && (
-                  <p className="text-amber-400 text-xs flex items-start gap-1.5">
-                    <span className="shrink-0 mt-0.5">⚠</span>{ocrAnchorError}
-                  </p>
-                )}
-                <button
-                  onClick={handleSetOcrAnchor}
-                  disabled={!ocrLabelInput.trim() || ocrAnchorComputing || mask.width <= 5}
-                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium rounded-lg transition-colors"
-                >
-                  {ocrAnchorComputing ? (
-                    <><span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Scanning label position...</>
-                  ) : (
-                    <><ScanSearch size={12} /> Calibrate OCR anchor</>
+              {mask.width <= 5 ? (
+                <p className="text-font/35 text-xs">Draw a mask region first before calibrating.</p>
+              ) : (
+                <div className="space-y-2">
+                  {ocrNearbyScanning && (
+                    <div className="flex items-center gap-2 text-xs text-font/40">
+                      <span className="w-3 h-3 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                      Scanning nearby text...
+                    </div>
                   )}
-                </button>
-                {mask.width <= 5 && (
-                  <p className="text-font/35 text-xs">Draw a mask region first before calibrating.</p>
-                )}
-              </div>
+                  {!ocrNearbyScanning && ocrNearbyWords.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-font/35 text-xs">Nearby text — click to use as anchor:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {ocrNearbyWords.map((w, i) => (
+                          <button
+                            key={i}
+                            onClick={() => { setOcrLabelInput(w); setOcrAnchorError(null); }}
+                            className={`px-2 py-0.5 rounded text-xs border transition-colors ${ocrLabelInput === w ? 'bg-blue-600 border-blue-500 text-white' : 'bg-white/5 border-white/10 text-font/60 hover:bg-white/10 hover:text-font/80'}`}
+                          >
+                            {w}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {!ocrNearbyScanning && ocrNearbyWords.length === 0 && (
+                    <button
+                      onClick={scanNearbyWords}
+                      className="text-xs text-blue-400 hover:text-blue-300 underline"
+                    >
+                      Scan nearby text
+                    </button>
+                  )}
+                  <input
+                    type="text"
+                    value={ocrLabelInput}
+                    onChange={e => { setOcrLabelInput(e.target.value); setOcrAnchorError(null); }}
+                    onKeyDown={e => e.key === 'Enter' && handleSetOcrAnchor()}
+                    placeholder="or type a label manually"
+                    className="w-full bg-surface border border-white/10 focus:border-blue-500/60 outline-none rounded-lg px-3 py-2 text-font text-sm placeholder:text-font/30 transition-colors"
+                  />
+                  {ocrAnchorError && (
+                    <p className="text-amber-400 text-xs flex items-start gap-1.5">
+                      <span className="shrink-0 mt-0.5">⚠</span>{ocrAnchorError}
+                    </p>
+                  )}
+                  <button
+                    onClick={handleSetOcrAnchor}
+                    disabled={!ocrLabelInput.trim() || ocrAnchorComputing}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium rounded-lg transition-colors"
+                  >
+                    {ocrAnchorComputing ? (
+                      <><span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Scanning label position...</>
+                    ) : (
+                      <><ScanSearch size={12} /> Calibrate OCR anchor</>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
