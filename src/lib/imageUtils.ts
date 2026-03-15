@@ -773,29 +773,32 @@ export async function findRegionByOcrLabel(
 
   if (!labelBbox) return null;
 
-  const labelCx = (labelBbox.x0 + labelBbox.x1) / 2;
+  const labelH = labelBbox.y1 - labelBbox.y0;
   const labelCy = (labelBbox.y0 + labelBbox.y1) / 2;
+
   const searchR = ocrAnchor.searchRadiusFrac * Math.max(cw, ch);
   const maskW = Math.round(ocrAnchor.maskWidthFrac * cw);
   const maskH = Math.round(ocrAnchor.maskHeightFrac * ch);
 
+  const vertPad = Math.round(labelH * 0.5);
+
   let searchX: number, searchY: number, searchW: number, searchH: number;
 
   if (ocrAnchor.searchDirection === 'right') {
-    searchX = labelBbox.x1;
-    searchY = labelCy - searchR * 0.5;
-    searchW = searchR;
-    searchH = searchR;
+    searchX = labelBbox.x1 + Math.round(labelH * 0.2);
+    searchY = Math.max(0, labelBbox.y0 - Math.round(labelH * 0.5));
+    searchW = Math.round(searchR);
+    searchH = Math.round(labelH * 4);
   } else if (ocrAnchor.searchDirection === 'below') {
-    searchX = labelBbox.x0 - searchR * 0.25;
-    searchY = labelBbox.y1;
-    searchW = searchR * 1.5;
-    searchH = searchR;
+    searchX = Math.max(0, labelBbox.x0 - vertPad);
+    searchY = labelBbox.y1 + vertPad;
+    searchW = Math.round(cw * 0.5);
+    searchH = Math.round(searchR);
   } else {
-    searchX = labelBbox.x1;
-    searchY = labelCy - searchR * 0.25;
-    searchW = searchR * 1.5;
-    searchH = searchR;
+    searchX = labelBbox.x1 + Math.round(labelH * 0.2);
+    searchY = Math.max(0, labelBbox.y0 - Math.round(labelH * 0.5));
+    searchW = Math.round(searchR * 1.2);
+    searchH = Math.round(labelH * 5);
   }
 
   searchX = Math.max(0, Math.round(searchX));
@@ -804,7 +807,7 @@ export async function findRegionByOcrLabel(
   searchH = Math.min(ch - searchY, Math.round(searchH));
 
   if (searchW < 10 || searchH < 10) {
-    return { x: Math.max(0, Math.round(labelCx)), y: Math.max(0, Math.round(labelCy)), width: maskW, height: maskH };
+    return { x: labelBbox.x1, y: Math.round(labelCy - maskH / 2), width: maskW, height: maskH };
   }
 
   const ctx = canvas.getContext('2d')!;
@@ -813,77 +816,74 @@ export async function findRegionByOcrLabel(
   const sw = imgData.width;
   const sh = imgData.height;
 
-  const DASH_THRESHOLD = 140;
-  const MIN_RUN = Math.round(sw * 0.04);
+  const DARK = 160;
+  let minX = sw, minY = sh, maxX = 0, maxY = 0;
+  let hasInk = false;
 
-  const rowDashScore = new Float32Array(sh);
-  const colDashScore = new Float32Array(sw);
+  const rowRuns: Array<Array<{ start: number; len: number }>> = [];
 
   for (let y = 0; y < sh; y++) {
+    const runs: Array<{ start: number; len: number }> = [];
     let run = 0;
-    let score = 0;
-    let prevDark = false;
-    for (let x = 0; x < sw; x++) {
-      const i = (y * sw + x) * 4;
-      const bright = (d[i] + d[i + 1] + d[i + 2]) / 3;
-      const dark = bright < DASH_THRESHOLD;
+    let runStart = 0;
+    for (let x = 0; x <= sw; x++) {
+      const dark = x < sw && (d[(y * sw + x) * 4] + d[(y * sw + x) * 4 + 1] + d[(y * sw + x) * 4 + 2]) / 3 < DARK;
       if (dark) {
+        if (run === 0) runStart = x;
         run++;
       } else {
-        if (run >= MIN_RUN && run <= sw * 0.4) score++;
-        if (prevDark && run > 0) score += 0.5;
-        run = 0;
-      }
-      prevDark = dark;
-    }
-    rowDashScore[y] = score;
-  }
-
-  for (let x = 0; x < sw; x++) {
-    let run = 0;
-    let score = 0;
-    for (let y = 0; y < sh; y++) {
-      const i = (y * sw + x) * 4;
-      const bright = (d[i] + d[i + 1] + d[i + 2]) / 3;
-      const dark = bright < DASH_THRESHOLD;
-      if (dark) {
-        run++;
-      } else {
-        if (run >= 2 && run <= sh * 0.4) score++;
+        if (run >= 2) runs.push({ start: runStart, len: run });
         run = 0;
       }
     }
-    colDashScore[x] = score;
+    rowRuns.push(runs);
   }
 
-  const rowThreshold = 1.5;
-  const colThreshold = 1.0;
-
-  let topRow = -1, bottomRow = -1;
   for (let y = 0; y < sh; y++) {
-    if (rowDashScore[y] >= rowThreshold) {
-      if (topRow < 0) topRow = y;
-      bottomRow = y;
+    const runs = rowRuns[y];
+    if (runs.length === 0) continue;
+
+    const totalDarkPx = runs.reduce((s, r) => s + r.len, 0);
+    if (totalDarkPx < 3) continue;
+
+    if (runs.length >= 3) {
+      const lengths = runs.map(r => r.len);
+      const meanLen = lengths.reduce((s, v) => s + v, 0) / lengths.length;
+      const variance = lengths.reduce((s, v) => s + (v - meanLen) ** 2, 0) / lengths.length;
+      const cv = Math.sqrt(variance) / (meanLen + 0.001);
+      const gaps: number[] = [];
+      for (let i = 1; i < runs.length; i++) {
+        gaps.push(runs[i].start - (runs[i - 1].start + runs[i - 1].len));
+      }
+      const meanGap = gaps.reduce((s, v) => s + v, 0) / (gaps.length + 0.001);
+      const gapVariance = gaps.reduce((s, v) => s + (v - meanGap) ** 2, 0) / (gaps.length + 0.001);
+      const gapCv = Math.sqrt(gapVariance) / (meanGap + 0.001);
+      if (cv < 0.35 && gapCv < 0.5 && meanLen > 4) continue;
     }
+
+    const rowMinX = runs[0].start;
+    const lastRun = runs[runs.length - 1];
+    const rowMaxX = lastRun.start + lastRun.len - 1;
+    const rowSpan = rowMaxX - rowMinX;
+
+    if (rowSpan < 5) continue;
+    if (rowMinX < minX) minX = rowMinX;
+    if (rowMaxX > maxX) maxX = rowMaxX;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+    hasInk = true;
   }
 
-  let leftCol = -1, rightCol = -1;
-  for (let x = 0; x < sw; x++) {
-    if (colDashScore[x] >= colThreshold) {
-      if (leftCol < 0) leftCol = x;
-      rightCol = x;
-    }
+  if (hasInk && (maxX - minX) > 8 && (maxY - minY) > 4) {
+    const PAD = Math.round(labelH * 0.4);
+    const absX = Math.max(0, searchX + minX - PAD);
+    const absY = Math.max(0, searchY + minY - PAD);
+    const absW = Math.min(cw - absX, maxX - minX + PAD * 2);
+    const absH = Math.min(ch - absY, maxY - minY + PAD * 2);
+    return { x: absX, y: absY, width: Math.max(maskW / 2, absW), height: Math.max(maskH / 2, absH) };
   }
 
-  if (topRow >= 0 && bottomRow > topRow + 5 && leftCol >= 0 && rightCol > leftCol + 5) {
-    const boxX = Math.max(0, searchX + leftCol);
-    const boxY = Math.max(0, searchY + topRow);
-    const boxW = Math.min(cw - boxX, rightCol - leftCol + 4);
-    const boxH = Math.min(ch - boxY, bottomRow - topRow + 4);
-    return { x: boxX, y: boxY, width: boxW, height: boxH };
-  }
-
-  return { x: searchX, y: searchY, width: maskW, height: maskH };
+  return { x: searchX, y: searchY, width: Math.min(maskW, cw - searchX), height: Math.min(maskH, ch - searchY) };
 }
 
 export async function applyOcrLabelAnchorToMask(
